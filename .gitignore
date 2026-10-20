@@ -8,6 +8,7 @@
 !/.gitignore
 !/.env.example
 !/README.md
+!/DEPLOY.md
 !/package.json
 !/package-lock.json
 !/tsconfig.json
@@ -33,3 +34,5 @@ node_modules/
 .env*.local
 .DS_Store
 *.tsbuildinfo
+.vercel
+.env*
