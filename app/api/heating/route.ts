@@ -8,13 +8,17 @@ export const dynamic = 'force-dynamic';
 
 type HeatingRoom = {
   id: string;
+  kind: string;
   room: string | null;
   controlGroup: string | null;
   stale: boolean;
   tempC?: unknown;
   powerW?: unknown;
   relay?: unknown;
+  channels?: unknown;
 };
+
+type HeatingChannel = { id: string | number; label?: string; relay?: boolean; powerW?: number };
 
 /** Current setpoint + each heater's room temperature and on/off state. */
 export async function GET() {
@@ -24,6 +28,7 @@ export async function GET() {
   const { state, heaters } = await getHeatingState();
   const rooms: HeatingRoom[] = heaters.map((h) => ({
     id: h.id,
+    kind: h.kind,
     room: h.room,
     controlGroup: h.controlGroup,
     stale: Date.now() - h.updatedAt.getTime() > DEVICE_SILENT_MS,
@@ -36,7 +41,8 @@ export async function GET() {
     const members = rooms.filter((h) => h.controlGroup === group.id || (!h.controlGroup && (group.id === 'upstairs' ? h.room?.toLowerCase().includes('ylä') : true)));
     const temps = members.map((h) => h.tempC).filter((v): v is number => typeof v === 'number');
     const powers = members.map((h) => h.powerW).filter((v): v is number => typeof v === 'number');
-    const relays = members.filter((h) => h.relay === true).length;
+    const channels = members.flatMap((h) => Array.isArray(h.channels) ? h.channels : []).filter((c): c is HeatingChannel => !!c && typeof c === 'object' && 'id' in c);
+    const relays = channels.length ? channels.filter((c) => c.relay === true).length : members.filter((h) => h.relay === true).length;
     return {
       ...group,
       stale: members.length === 0 || members.every((h) => h.stale),
@@ -44,6 +50,7 @@ export async function GET() {
       relayOn: relays > 0,
       activeDevices: relays,
       powerW: powers.length ? powers.reduce((a, b) => a + b, 0) : null,
+      channels,
     };
   });
   return NextResponse.json({

@@ -6,8 +6,9 @@ import { Flame, Thermometer } from 'lucide-react';
 import { fetcher, post } from '@/lib/fetcher';
 import { cn } from '@/lib/cn';
 
-type Heater = { id: string; room: string | null; controlGroup: string | null; stale: boolean; relay?: boolean; tempC?: number; powerW?: number };
-type Group = { id: string; label: string; stale: boolean; relayOn: boolean; activeDevices: number; tempC: number | null; powerW: number | null };
+type Heater = { id: string; kind: string; room: string | null; controlGroup: string | null; stale: boolean; relay?: boolean; tempC?: number; powerW?: number };
+type Channel = { id: string | number; label?: string; relay?: boolean; powerW?: number };
+type Group = { id: string; label: string; stale: boolean; relayOn: boolean; activeDevices: number; tempC: number | null; powerW: number | null; channels: Channel[] };
 type Heating = { setpointC: number; source: string; overrideUntil: string | null; groups: Group[]; rooms: Heater[] };
 
 const SOURCE_LABEL: Record<string, string> = {
@@ -81,12 +82,25 @@ export default function HeatingCard() {
                 </div>
                 <div className="mt-2 flex items-center gap-3 text-muted tabular-nums">
                   {typeof g.tempC === 'number' && <span className="flex items-center gap-1"><Thermometer size={14} />{g.tempC.toFixed(1)}°C</span>}
-                  <span>{g.activeDevices} päällä</span>
+                  <span>{g.activeDevices}/{g.channels.length || '—'} päällä</span>
                   {typeof g.powerW === 'number' && <span>{Math.round(g.powerW)} W</span>}
                 </div>
               </div>
             ))}
           </div>
+          {(data?.groups ?? []).some((g) => g.channels.length > 0) && (
+            <div className="mt-3 grid gap-2 sm:grid-cols-3">
+              {(data?.groups ?? []).flatMap((g) => g.channels.map((channel) => (
+                <div key={`${g.id}-${channel.id}`} className="rounded-lg border border-border px-3 py-2 text-sm">
+                  <div className="flex items-center justify-between">
+                    <span>{channel.label ?? `O${Number(channel.id) + 1}`}</span>
+                    <span className={channel.relay ? 'text-success' : 'text-muted'}>{channel.relay ? 'päällä' : 'pois'}</span>
+                  </div>
+                  {typeof channel.powerW === 'number' && <div className="mt-1 text-xs text-muted">{Math.round(channel.powerW)} W</div>}
+                </div>
+              ))) }
+            </div>
+          )}
           <div className="mt-3 flex flex-col gap-2">
             {(data?.rooms ?? []).map((h) => (
               <div key={h.id} className="flex items-center justify-between rounded-lg border border-border px-3 py-2 text-sm">

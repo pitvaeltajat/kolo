@@ -1,15 +1,17 @@
 # Device side — Shelly (heating) & ESP32 (door)
 
-The on-site firmware/scripts that talk to the kolo Vercel app. Written **in
-advance** of the hardware so the contract is pinned and phases 1→ can start the
-day the parts arrive. Nothing here is on the wall yet.
+The on-site device configuration/scripts that talk to the kolo Vercel app.
+Shellys use their normal stock firmware; the optional mJS file below is an
+application script, not replacement firmware. Written **in advance** of the
+hardware so the contract is pinned and phases 1→ can start the day the parts
+arrive. Nothing here is on the wall yet.
 
 ```
                  <public-app-host> (Vercel)
    setpoint/schedule │        │ cmd/allowlist        ▲ state / ack / log
    (MQTT, signed)    ▼        ▼ (MQTT, signed)        │ (HTTP POST or MQTT, signed)
             ┌─────────────┐        ┌───────────────────────────┐
-            │ Shelly 1PM  │        │ ESP32-C6 + PN532 (door box)│
+            │ Shelly Pro 3│        │ ESP32-C6 + PN532 (door box)│
             │ ×3 heaters  │        │ BLE → Yale Doorman L3      │
             │ BLE → BLU H&T│        │ NTAG 424 tags              │
             └─────────────┘        └───────────────────────────┘
@@ -46,7 +48,13 @@ The broker is **untrusted** — it only relays. Every message is an envelope:
 | door → kolo | HTTP POST | `/api/log` | `{method, action, result, member?, detail?}` |
 | kolo → heat | MQTT | `kolo/heating/setpoint` | `{setpointC, source}` |
 | kolo → heat | MQTT | `kolo/heating/schedule` | `{periods:[{startMs,endMs,setpointC}]}` |
-| heat → kolo | HTTP POST | `/api/state` | `{kind:"HEATER", room, relay, tempC, powerW}` |
+| heat → kolo | HTTP POST | `/api/state` | `{kind:"HEATER", room, controlGroup, relay, tempC, powerW, channels?}` |
+
+For the downstairs Shelly Pro 3, send one signed device report with
+`controlGroup:"downstairs"` and three independent channels:
+`channels:[{id:0,label:"O1",relay,powerW},{id:1,label:"O2",relay,powerW},
+{id:2,label:"O3",relay,powerW}]`. The dashboard displays each contactor
+separately.
 
 HTTP POSTs carry the same `{device,payload,sig}` envelope as the JSON body.
 
@@ -65,7 +73,9 @@ username `kolo`, the shared password, and `mqtt-ca.crt` as its trusted CA.
 
 ## Contents
 
-- `shelly/kolo-heating.js` — Shelly Gen3 thermostat script (phase 1 heating).
+- `shelly/kolo-heating.js` — optional local thermostat script for the two
+  upstairs Shelly 1 Gen4 units. It is not needed to make the Pro 3 channels
+  independent; stock firmware already exposes O1/O2/O3 separately.
 - `yale/fetch_offline_key.py` — fetch the lock's BLE offline key/slot/MAC (phase 1 door).
 - `esp32/` — ESPHome config + crypto helper for the door controller (phases 2–3).
 
