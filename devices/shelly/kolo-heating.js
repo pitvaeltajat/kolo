@@ -61,10 +61,15 @@ function sha256(bytes) {
   let withOne = bytes.slice(0);
   withOne.push(0x80);
   while (withOne.length % 64 !== 56) withOne.push(0);
+  // 64-bit big-endian bit length. High 32 bits are always 0 for our tiny
+  // payloads; write the low 32 in the last 4 bytes. (Don't use `bits >>> 32` —
+  // JS takes the shift mod 32, which would corrupt the length.)
   let bits = l * 8;
-  for (let i = 7; i >= 0; i--) {
-    withOne.push((bits >>> (i * 8)) & 0xff); // bits fits in 32-bit for our tiny msgs; high 32 are 0
-  }
+  withOne.push(0); withOne.push(0); withOne.push(0); withOne.push(0);
+  withOne.push((bits >>> 24) & 0xff);
+  withOne.push((bits >>> 16) & 0xff);
+  withOne.push((bits >>> 8) & 0xff);
+  withOne.push(bits & 0xff);
   for (let off = 0; off < withOne.length; off += 64) {
     let w = [];
     for (let i = 0; i < 16; i++) {
@@ -228,17 +233,17 @@ function applyRelay(on) {
 }
 
 function tick() {
-  // Sensor timeout → frost protection, never "on".
+  // Sensor silent > timeout → aim for the frost line (8 °C), never comfort.
   let sensorFresh = state.tempC !== null && Date.now() - state.tempAt < CONFIG.SENSOR_TIMEOUT_MS;
   let target = sensorFresh ? effectiveSetpoint() : CONFIG.FROST_C;
 
-  if (sensorFresh) {
+  // Run hysteresis against the target. When the sensor is stale we deliberately
+  // keep using the LAST reading (temperature moves slowly), so a Bluetooth
+  // glitch at −30 °C maintains ~8 °C instead of cutting the heat entirely. Only
+  // a sensor that has never reported (tempC === null) leaves the relay as-is.
+  if (state.tempC !== null) {
     if (state.tempC < target - CONFIG.HYSTERESIS_C) applyRelay(true);
     else if (state.tempC > target + CONFIG.HYSTERESIS_C) applyRelay(false);
-  } else {
-    // No reading: hold frost line blindly off unless we somehow have an old
-    // reading below frost. Safer to request heat only with a live sensor, so
-    // leave the relay as-is; the frost target matters once the sensor returns.
   }
   reportState(target);
 }
