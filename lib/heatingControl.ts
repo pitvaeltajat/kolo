@@ -16,7 +16,7 @@ export async function getHeatingState() {
   const state =
     (await prisma.heatingState.findUnique({ where: { id: SINGLETON } })) ??
     (await prisma.heatingState.create({ data: { id: SINGLETON } }));
-  const heaters = await prisma.device.findMany({ where: { kind: 'HEATER' }, orderBy: { id: 'asc' } });
+  const heaters = await prisma.device.findMany({ where: { kind: { in: ['HEATER', 'SENSOR'] } }, orderBy: { id: 'asc' } });
   return { state, heaters };
 }
 

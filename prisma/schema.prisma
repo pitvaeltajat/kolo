@@ -49,7 +49,7 @@ model Device {
   id        String   @id // "door", "heater-eteinen", ...
   kind      String // DOOR | HEATER | SENSOR
   room      String?
-  controlGroup String? // downstairs-p3 | upstairs
+  controlGroup String? // downstairs | upstairs
   state     Json     @default("{}")
   updatedAt DateTime @updatedAt
 

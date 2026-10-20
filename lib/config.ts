@@ -39,9 +39,9 @@ export const DIRECTORY_SUBJECT = optionalEnv('GOOGLE_DIRECTORY_SUBJECT');
 
 export const SETPOINT_MIN_C = 5;
 export const SETPOINT_MAX_C = 24;
-export const FROST_C = 8; // sensor silent > 30 min → frost protection, not "on"
+export const FROST_C = 10; // normal setback; heating hardware fails on if control is unavailable
 export const COMFORT_C = 20; // during/before an event
-export const IDLE_C = 12; // otherwise
+export const IDLE_C = 10; // otherwise
 export const PREHEAT_HOURS = 2; // start heating this long before an event
 export const SCHEDULE_DAYS = 7; // how far ahead to push periods to the Shellys
 

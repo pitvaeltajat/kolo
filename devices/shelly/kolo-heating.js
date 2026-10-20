@@ -5,7 +5,7 @@
 //     verifying the HMAC envelope (see devices/README.md "signing contract");
 //   - reads its room's Shelly BLU H&T temperature over BLE (BTHome);
 //   - runs a hysteresis thermostat with a minimum on/off time, clamps the
-//     setpoint, and falls back to frost protection if the sensor goes quiet;
+//     setpoint, and fails on if the sensor or control connection goes quiet;
 //   - keeps the last setpoint + the next-7-days schedule, so it keeps heating
 //     correctly with no internet (HEATING.md "Everything must keep working").
 //   - POSTs its state back to kolo so the web app can show room temp + on/off.
@@ -30,8 +30,8 @@ let CONFIG = {
 
   HYSTERESIS_C: 0.5, // ±0.5 °C around the setpoint
   MIN_TOGGLE_MS: 10 * 60 * 1000, // don't switch faster than every 10 min
-  FROST_C: 8, // sensor silent > SENSOR_TIMEOUT → this, never "on"
-  IDLE_C: 12, // no setpoint and no active schedule period
+  FAILSAFE_C: 24, // a control/sensor fault leaves heating on
+  IDLE_C: 10, // no setpoint and no active schedule period
   MIN_C: 5,
   MAX_C: 24,
   SENSOR_TIMEOUT_MS: 30 * 60 * 1000,
@@ -234,15 +234,15 @@ function applyRelay(on) {
 }
 
 function tick() {
-  // Sensor silent > timeout → aim for the frost line (8 °C), never comfort.
+  // Sensor silent > timeout → fail on, as required by the Kolo heating plan.
   let sensorFresh = state.tempC !== null && Date.now() - state.tempAt < CONFIG.SENSOR_TIMEOUT_MS;
-  let target = sensorFresh ? effectiveSetpoint() : CONFIG.FROST_C;
+  let target = sensorFresh ? effectiveSetpoint() : CONFIG.FAILSAFE_C;
 
-  // Run hysteresis against the target. When the sensor is stale we deliberately
-  // keep using the LAST reading (temperature moves slowly), so a Bluetooth
-  // glitch at −30 °C maintains ~8 °C instead of cutting the heat entirely. Only
-  // a sensor that has never reported (tempC === null) leaves the relay as-is.
-  if (state.tempC !== null) {
+  // Run hysteresis against the target. A stale or missing sensor is a fault and
+  // deliberately leaves the relay on.
+  if (!sensorFresh || state.tempC === null) {
+    applyRelay(true);
+  } else {
     if (state.tempC < target - CONFIG.HYSTERESIS_C) applyRelay(true);
     else if (state.tempC > target + CONFIG.HYSTERESIS_C) applyRelay(false);
   }
