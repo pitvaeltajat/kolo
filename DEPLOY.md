@@ -66,11 +66,15 @@ delegation**, authorise its client ID for scopes:
 `spreadsheets`. (gcloud can make the SA + key; the delegation grant is an Admin
 console step.)
 
-### 6. MQTT broker
+### 6. MQTT broker — Mosquitto on the existing AWS Lightsail
 
-Free HiveMQ Cloud or EMQX serverless. Set `MQTT_URL` (mqtts://…), `MQTT_USERNAME`,
-`MQTT_PASSWORD`. Until set, door/heating commands return "transport not
-configured" (by design — nothing fakes an unlock).
+Preferred host for the troop's supporting services is their own **Lightsail**
+instance (not a third-party managed broker). Run **Mosquitto** there with TLS
+(Let's Encrypt via the Lightsail instance's domain) + password auth, open 8883,
+set `MQTT_URL=mqtts://<host>:8883`, `MQTT_USERNAME`, `MQTT_PASSWORD`. The broker
+only relays signed envelopes, so it's untrusted by design. Until set,
+door/heating commands return "transport not configured" (nothing fakes an
+unlock).
 
 ### 7. Optional
 
