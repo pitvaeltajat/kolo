@@ -20,6 +20,7 @@ export default function AdminTags() {
   const [email, setEmail] = useState('');
   const [uid, setUid] = useState('');
   const [msg, setMsg] = useState<string | null>(null);
+  const [moveTo, setMoveTo] = useState<Record<string, string>>({});
 
   async function run(fn: () => Promise<unknown>) {
     setMsg(null);
@@ -86,15 +87,32 @@ export default function AdminTags() {
                 <span className="font-mono">{t.uid}</span> · {t.memberName ?? t.memberEmail}
               </span>
               {t.active && (
-                <button
-                  onClick={() => run(() => fetch(`/api/tags/${t.id}`, { method: 'DELETE' }).then((r) => {
-                    if (!r.ok) throw new Error('Poisto epäonnistui');
-                  }))}
-                  className="text-muted hover:text-danger"
-                  title="Mitätöi"
-                >
-                  <Trash2 size={15} />
-                </button>
+                <div className="flex items-center gap-2">
+                  <input
+                    value={moveTo[t.id] ?? ''}
+                    onChange={(e) => setMoveTo((v) => ({ ...v, [t.id]: e.target.value }))}
+                    placeholder="siirrä sähköpostiin"
+                    className="w-44 rounded border border-border bg-bg px-2 py-1 text-xs"
+                  />
+                  <button
+                    onClick={() => run(async () => {
+                      await fetch(`/api/tags/${t.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ memberEmail: moveTo[t.id] }) }).then(async (r) => {
+                        if (!r.ok) throw new Error((await r.json()).message ?? 'Siirto epäonnistui');
+                      });
+                      setMoveTo((v) => ({ ...v, [t.id]: '' }));
+                    })}
+                    className="rounded border border-border px-2 py-1 text-xs"
+                  >Siirrä</button>
+                  <button
+                    onClick={() => run(() => fetch(`/api/tags/${t.id}`, { method: 'DELETE' }).then((r) => {
+                      if (!r.ok) throw new Error('Mitätöinti epäonnistui');
+                    }))}
+                    className="text-muted hover:text-danger"
+                    title="Mitätöi avain"
+                  >
+                    <Trash2 size={15} />
+                  </button>
+                </div>
               )}
             </li>
           ))}

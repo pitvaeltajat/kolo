@@ -6,8 +6,9 @@ import { Flame, Thermometer } from 'lucide-react';
 import { fetcher, post } from '@/lib/fetcher';
 import { cn } from '@/lib/cn';
 
-type Heater = { id: string; room: string | null; stale: boolean; relay?: boolean; tempC?: number; powerW?: number };
-type Heating = { setpointC: number; source: string; overrideUntil: string | null; heaters: Heater[] };
+type Heater = { id: string; room: string | null; controlGroup: string | null; stale: boolean; relay?: boolean; tempC?: number; powerW?: number };
+type Group = { id: string; label: string; stale: boolean; relayOn: boolean; activeDevices: number; tempC: number | null; powerW: number | null };
+type Heating = { setpointC: number; source: string; overrideUntil: string | null; groups: Group[]; rooms: Heater[] };
 
 const SOURCE_LABEL: Record<string, string> = {
   MANUAL: 'käsisäätö',
@@ -68,8 +69,26 @@ export default function HeatingCard() {
 
           {msg && <p className="mt-2 text-sm text-danger">{msg}</p>}
 
-          <div className="mt-4 flex flex-col gap-2">
-            {(data?.heaters ?? []).map((h) => (
+          <div className="mt-4 grid gap-2 sm:grid-cols-2">
+            {(data?.groups ?? []).map((g) => (
+              <div key={g.id} className="rounded-lg border border-border px-3 py-3 text-sm">
+                <div className="flex items-center justify-between">
+                  <span className="flex items-center gap-2 font-medium">
+                    <Flame size={15} className={cn(g.relayOn ? 'text-accent' : 'text-muted')} />
+                    {g.label}
+                  </span>
+                  {g.stale && <span className="text-danger">ei yhteyttä</span>}
+                </div>
+                <div className="mt-2 flex items-center gap-3 text-muted tabular-nums">
+                  {typeof g.tempC === 'number' && <span className="flex items-center gap-1"><Thermometer size={14} />{g.tempC.toFixed(1)}°C</span>}
+                  <span>{g.activeDevices} päällä</span>
+                  {typeof g.powerW === 'number' && <span>{Math.round(g.powerW)} W</span>}
+                </div>
+              </div>
+            ))}
+          </div>
+          <div className="mt-3 flex flex-col gap-2">
+            {(data?.rooms ?? []).map((h) => (
               <div key={h.id} className="flex items-center justify-between rounded-lg border border-border px-3 py-2 text-sm">
                 <span className="flex items-center gap-2">
                   <Flame size={15} className={cn(h.relay ? 'text-accent' : 'text-muted')} />
@@ -87,7 +106,7 @@ export default function HeatingCard() {
                 </span>
               </div>
             ))}
-            {data && data.heaters.length === 0 && (
+            {data && data.rooms.length === 0 && (
               <p className="text-sm text-muted">Ei lämmityslaitteita vielä liitettynä.</p>
             )}
           </div>

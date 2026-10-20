@@ -20,6 +20,9 @@ export async function POST(req: NextRequest) {
   const memberEmail = typeof body?.memberEmail === 'string' ? body.memberEmail.trim().toLowerCase() : '';
   if (!memberEmail) return NextResponse.json({ message: 'memberEmail vaaditaan' }, { status: 400 });
 
+  const existing = await prisma.tag.findFirst({ where: { memberEmail, active: true } });
+  if (existing) return NextResponse.json({ message: 'Henkilöllä on jo aktiivinen avain — siirrä tai mitätöi se ensin' }, { status: 409 });
+
   let result;
   try {
     result = await command('door', 'enroll', { member: memberEmail });

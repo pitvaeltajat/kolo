@@ -1,6 +1,6 @@
-// kolo heating thermostat — Shelly 1PM Gen3 script (mJS).
+// kolo heating thermostat — Shelly 1 Gen4 script (mJS).
 //
-// One of these runs on each heater's Shelly. It:
+// One of these runs on each upstairs heater's Shelly. It:
 //   - subscribes to kolo/heating/setpoint + kolo/heating/schedule over MQTT,
 //     verifying the HMAC envelope (see devices/README.md "signing contract");
 //   - reads its room's Shelly BLU H&T temperature over BLE (BTHome);
@@ -24,6 +24,7 @@ let CONFIG = {
   HMAC_KEY: 'CHANGE-ME-same-as-DEVICE_HMAC_KEY', // shared secret with kolo
   DEVICE_ID: 'heater-eteinen', // unique per Shelly; shown in the web app
   ROOM: 'eteinen', // room label
+  CONTROL_GROUP: 'upstairs', // both upstairs heaters are shown as one group
   SENSOR_MAC: 'aa:bb:cc:dd:ee:ff', // this room's BLU H&T
   RELAY_ID: 0, // Switch component controlling the heater
 
@@ -254,6 +255,7 @@ function reportState(target) {
   let body = {
     kind: 'HEATER',
     room: CONFIG.ROOM,
+    controlGroup: CONFIG.CONTROL_GROUP,
     relay: state.relayOn,
     tempC: state.tempC,
     powerW: powerW,

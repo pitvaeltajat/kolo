@@ -16,7 +16,7 @@ export async function POST(req: NextRequest) {
   if (!r.ok) return NextResponse.json({ message: r.reason }, { status: r.status });
 
   const { device, body } = r.value;
-  const { kind, room, ts: _ts, nonce: _nonce, device: _d, ...state } = body;
+  const { kind, room, controlGroup, ts: _ts, nonce: _nonce, device: _d, ...state } = body;
 
   await prisma.device.upsert({
     where: { id: device },
@@ -24,9 +24,14 @@ export async function POST(req: NextRequest) {
       id: device,
       kind: typeof kind === 'string' ? kind : 'DOOR',
       room: typeof room === 'string' ? room : null,
+      controlGroup: typeof controlGroup === 'string' ? controlGroup : null,
       state,
     },
-    update: { state, ...(typeof room === 'string' ? { room } : {}) },
+    update: {
+      state,
+      ...(typeof room === 'string' ? { room } : {}),
+      ...(typeof controlGroup === 'string' ? { controlGroup } : {}),
+    },
   });
 
   return NextResponse.json({ ok: true });

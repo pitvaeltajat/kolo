@@ -26,14 +26,22 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ message: 'uid ja memberEmail vaaditaan' }, { status: 400 });
   }
 
-  const tag = await prisma.tag.create({
-    data: {
-      uid,
-      memberEmail,
-      memberName: typeof body?.memberName === 'string' ? body.memberName : null,
-      label: typeof body?.label === 'string' ? body.label : null,
-    },
-  });
+  let tag;
+  try {
+    tag = await prisma.tag.create({
+      data: {
+        uid,
+        memberEmail,
+        memberName: typeof body?.memberName === 'string' ? body.memberName : null,
+        label: typeof body?.label === 'string' ? body.label : null,
+      },
+    });
+  } catch (err) {
+    if (err && typeof err === 'object' && 'code' in err && err.code === 'P2002') {
+      return NextResponse.json({ message: 'Henkilöllä on jo aktiivinen avain — siirrä tai mitätöi se ensin' }, { status: 409 });
+    }
+    throw err;
+  }
   await pushAllowlist().catch((e) => console.error('[kolo] allowlist push after tag create failed:', e));
   return NextResponse.json({ tag }, { status: 201 });
 }
