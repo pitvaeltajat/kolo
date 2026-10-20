@@ -22,10 +22,23 @@ function brokerUrl(): string {
   return url;
 }
 
+/**
+ * CA for the broker's TLS cert. The troop's Mosquitto on Lightsail uses a
+ * private CA (not a public one), so Node must be told to trust it — otherwise
+ * `mqtts://` fails verification. Accepts the PEM directly or base64 of it
+ * (base64 survives the Vercel env editor). Unset → public CAs only.
+ */
+function brokerCa(): Buffer | undefined {
+  const raw = process.env.MQTT_CA?.trim();
+  if (!raw) return undefined;
+  return Buffer.from(raw.includes('BEGIN') ? raw : Buffer.from(raw, 'base64').toString('utf8'));
+}
+
 function connect(): Promise<mqtt.MqttClient> {
   const client = mqtt.connect(brokerUrl(), {
     username: process.env.MQTT_USERNAME,
     password: process.env.MQTT_PASSWORD,
+    ca: brokerCa(),
     connectTimeout: 4000,
     reconnectPeriod: 0, // one shot: a serverless invocation shouldn't retry forever
   });

@@ -66,15 +66,28 @@ delegation**, authorise its client ID for scopes:
 `spreadsheets`. (gcloud can make the SA + key; the delegation grant is an Admin
 console step.)
 
-### 6. MQTT broker — Mosquitto on the existing AWS Lightsail
+### 6. MQTT broker — DONE (Mosquitto on Lightsail)
 
-Preferred host for the troop's supporting services is their own **Lightsail**
-instance (not a third-party managed broker). Run **Mosquitto** there with TLS
-(Let's Encrypt via the Lightsail instance's domain) + password auth, open 8883,
-set `MQTT_URL=mqtts://<host>:8883`, `MQTT_USERNAME`, `MQTT_PASSWORD`. The broker
-only relays signed envelopes, so it's untrusted by design. Until set,
-door/heating commands return "transport not configured" (nothing fakes an
-unlock).
+Running as a Docker container `kolo-mosquitto` (`eclipse-mosquitto:2`,
+`--restart unless-stopped`) on `pitva-debian-1`, TLS on **8883** with a private
+CA + password auth (`allow_anonymous false`). DNS `mqtt.pitva.fi` →
+`13.51.186.114`, Lightsail port 8883 opened. Config/certs live in
+`/etc/kolo-mosquitto/` on the box. Verified end-to-end with kolo's own `mqtt`
+client (TLS + auth + pub/sub round-trip).
+
+Vercel env set: `MQTT_URL=mqtts://mqtt.pitva.fi:8883`, `MQTT_USERNAME=kolo`,
+`MQTT_PASSWORD` (generated), `MQTT_CA` (base64 of the private CA). The CA cert
+(public, not secret) is in `devices/mqtt-ca.crt` for the Shelly/ESP32 configs.
+
+The password + CA/key also sit in this session's scratchpad
+(`mqtt-certs/`). Rotate the password with
+`docker run --rm -v /etc/kolo-mosquitto/config:/mosquitto/config eclipse-mosquitto:2 mosquitto_passwd -b /mosquitto/config/passwd kolo <new>`
+then `docker restart kolo-mosquitto` and update `MQTT_PASSWORD` on Vercel.
+
+> Note: the instance's public IP isn't a static/attached Lightsail IP, so if it
+> is ever *stopped/started* the IP changes and `mqtt.pitva.fi` must be updated
+> (a reboot keeps it). Attach a static IP to make it permanent — carefully,
+> since that changes the IP and your existing web DNS may point at the current one.
 
 ### 7. Optional
 
