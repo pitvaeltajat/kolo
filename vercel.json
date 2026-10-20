@@ -1,0 +1,7 @@
+{
+  "crons": [
+    { "path": "/api/cron/heating", "schedule": "*/15 * * * *" },
+    { "path": "/api/cron/allowlist", "schedule": "*/10 * * * *" },
+    { "path": "/api/cron/heartbeat", "schedule": "*/15 * * * *" }
+  ]
+}

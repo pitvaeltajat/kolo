@@ -1,0 +1,75 @@
+// kolo's own data. Identity comes from the shared pitva.fi session cookie and
+// authorisation from Google Group membership (lib/authz.ts) — there are no
+// user/account/session tables here on purpose.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+/// An NFC tag enrolled to a person. The tag only points at a member; access is
+/// really decided by whether that email is still in the Google Group when the
+/// allowlist is pushed to the reader (lib/allowlist.ts).
+model Tag {
+  id          String    @id @default(cuid())
+  uid         String    @unique // NTAG 424 DNA UID, hex
+  memberEmail String
+  memberName  String?
+  label       String? // e.g. "blue fob", optional
+  active      Boolean   @default(true)
+  createdAt   DateTime  @default(now())
+  revokedAt   DateTime?
+
+  @@index([memberEmail])
+}
+
+/// Audit trail for the door. Yale's own log only shows which key/slot opened,
+/// never who — this table is the real record (PLAN.md).
+model DoorEvent {
+  id          String   @id @default(cuid())
+  at          DateTime @default(now())
+  memberEmail String?
+  memberName  String?
+  method      String // PHONE | TAG | PIN | MANUAL
+  action      String // UNLOCK | LOCK
+  result      String // OK | FAIL | DENIED
+  detail      String?
+
+  @@index([at])
+}
+
+/// Latest reported state of a device, upserted on every /api/state report.
+/// `state` is device-shaped JSON: door = { locked, doorOpen, battery };
+/// a heating Shelly = { relay, tempC, powerW }.
+model Device {
+  id        String   @id // "door", "heater-eteinen", ...
+  kind      String // DOOR | HEATER | SENSOR
+  room      String?
+  state     Json     @default("{}")
+  updatedAt DateTime @updatedAt
+
+  @@index([kind])
+}
+
+/// The single heating setpoint plus any manual override. One row, id "singleton".
+model HeatingState {
+  id            String   @id @default("singleton")
+  setpointC     Float    @default(12)
+  roomOffsets   Json     @default("{}") // { "eteinen": -0.5 }
+  source        String   @default("DEFAULT") // DEFAULT | MANUAL | CALENDAR
+  overrideUntil DateTime? // a manual slider override holds until this time, then calendar takes back over
+  updatedAt     DateTime @updatedAt
+}
+
+/// Replay protection for inbound HMAC-signed device messages (/api/state,
+/// /api/log). A nonce may be spent once; old ones are pruned past the window.
+model SeenNonce {
+  nonce String   @id
+  at    DateTime @default(now())
+
+  @@index([at])
+}

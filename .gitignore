@@ -1,0 +1,34 @@
+# This folder also holds PitVa's kolo building-document archive (PDFs, DWGs,
+# scans). The app repo tracks only its own source, so ignore everything at the
+# root by default and re-include the app paths below. The documents stay on
+# disk, untouched — just not in git. Drop a path from the ignore (or remove the
+# leading `/*`) if you want them versioned too.
+/*
+
+!/.gitignore
+!/.env.example
+!/README.md
+!/package.json
+!/package-lock.json
+!/tsconfig.json
+!/next.config.ts
+!/next-env.d.ts
+!/vercel.json
+!/postcss.config.mjs
+!/eslint.config.mjs
+!/vitest.config.ts
+!/app/
+!/lib/
+!/components/
+!/prisma/
+!/public/
+!/types/
+!/suunnitelmat/
+
+# Build output / local junk, even inside the re-included dirs.
+node_modules/
+.next/
+.env
+.env*.local
+.DS_Store
+*.tsbuildinfo

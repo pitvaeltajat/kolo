@@ -1,0 +1,47 @@
+@import 'tailwindcss';
+
+/* Dark mode is driven by next-themes' `class` strategy. */
+@custom-variant dark (&:where(.dark, .dark *));
+
+:root {
+  --bg: #f6f7f9;
+  --surface: #ffffff;
+  --border: #e3e6ea;
+  --text: #15181c;
+  --muted: #5c6670;
+  --accent: #1f6f43; /* PitVa green */
+  --accent-fg: #ffffff;
+  --danger: #b4231f;
+}
+
+.dark {
+  --bg: #101316;
+  --surface: #181c21;
+  --border: #2a2f36;
+  --text: #eef1f4;
+  --muted: #9aa4af;
+  --accent: #35b472;
+  --accent-fg: #06130c;
+  --danger: #ef5a54;
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-border: var(--border);
+  --color-text: var(--text);
+  --color-muted: var(--muted);
+  --color-accent: var(--accent);
+  --color-accent-fg: var(--accent-fg);
+  --color-danger: var(--danger);
+}
+
+html,
+body {
+  background: var(--bg);
+  color: var(--text);
+}
+
+body {
+  font-family: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+}

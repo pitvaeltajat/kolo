@@ -1,0 +1,10 @@
+{
+  "name": "Kolo",
+  "short_name": "Kolo",
+  "description": "PitVan kolon oven ja lämmityksen ohjaus",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#101316",
+  "theme_color": "#1f6f43",
+  "icons": []
+}
