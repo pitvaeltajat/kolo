@@ -37,18 +37,16 @@ Project → Settings → Deployment Protection → **Vercel Authentication: off*
 (or Preview-only). Otherwise members hit Vercel's SSO wall instead of our Google
 login.
 
-### 3. Postgres
+### 3. Postgres — DONE
 
-Add a Postgres store (Vercel dashboard → Storage → Neon/Prisma Postgres, free),
-which sets `DATABASE_URL`. Then create the schema:
+Kolo uses a separate `kolo` database and `kolo` role in the existing
+`budu-postgres` container on Lightsail (`13.51.186.114:5434`). The schema is
+tracked in `prisma/migrations/` and has been applied with `prisma migrate deploy`.
+Vercel Production has a separate `DATABASE_URL` using `sslmode=require`.
 
-```bash
-vercel env pull .env.production.local      # gets DATABASE_URL
-npx prisma migrate deploy                   # or `migrate dev` locally first to create the migration
-```
-
-(No migration files exist yet — run `npx prisma migrate dev --name init` once
-against a dev DB to generate `prisma/migrations/`, commit it, then deploy.)
+The shared Postgres container now has TLS enabled. The certificate is stored in
+the container's persistent data volume; `sslmode=require` encrypts the
+connection without requiring the self-signed certificate to be added to Vercel.
 
 ### 4. Google sign-in (OAuth client)
 

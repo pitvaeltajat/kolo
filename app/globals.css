@@ -4,25 +4,30 @@
 @custom-variant dark (&:where(.dark, .dark *));
 
 :root {
-  --bg: #f6f7f9;
-  --surface: #ffffff;
-  --border: #e3e6ea;
-  --text: #15181c;
-  --muted: #5c6670;
-  --accent: #1f6f43; /* PitVa green */
-  --accent-fg: #ffffff;
-  --danger: #b4231f;
+  /* Shared PitVa service palette (atk, Klapi and Budu). */
+  --bg: hsl(219 89% 96%);
+  --surface: hsl(0 0% 100%);
+  --border: hsl(20 7% 82%);
+  --text: hsl(244 51% 24%);
+  --muted: hsl(244 14% 40%);
+  --accent: hsl(219 89% 86%);
+  --accent-fg: hsl(244 51% 24%);
+  --brand: hsl(244 51% 24%);
+  --danger: hsl(2 50% 42%);
+  --success: hsl(150 45% 30%);
 }
 
 .dark {
-  --bg: #101316;
-  --surface: #181c21;
-  --border: #2a2f36;
-  --text: #eef1f4;
-  --muted: #9aa4af;
-  --accent: #35b472;
-  --accent-fg: #06130c;
-  --danger: #ef5a54;
+  --bg: hsl(244 45% 9%);
+  --surface: hsl(244 45% 15%);
+  --border: hsl(244 30% 30%);
+  --text: hsl(219 60% 93%);
+  --muted: hsl(219 30% 72%);
+  --accent: hsl(219 89% 86%);
+  --accent-fg: hsl(244 51% 15%);
+  --brand: hsl(219 89% 86%);
+  --danger: hsl(2 65% 68%);
+  --success: hsl(150 45% 55%);
 }
 
 @theme inline {
@@ -43,5 +48,79 @@ body {
 }
 
 body {
+  margin: 0;
   font-family: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+}
+
+button,
+input {
+  font: inherit;
+}
+
+/* The service shell follows the same navy app bar and 1280px column as Klapi. */
+.topbar {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  background: var(--brand);
+  color: var(--bg);
+  box-shadow: 0 1px 2px rgb(34 30 93 / 12%);
+}
+
+.topbar-inner {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  max-width: 1280px;
+  height: 64px;
+  margin: 0 auto;
+  padding: 0 16px;
+}
+
+.topbar-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 11px;
+  border: 1px solid rgb(255 255 255 / 22%);
+  border-radius: 999px;
+  color: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  text-decoration: none;
+  opacity: 0.9;
+}
+
+.topbar-link:hover,
+.topbar-icon:hover {
+  background: rgb(255 255 255 / 10%);
+  opacity: 1;
+}
+
+.topbar-icon {
+  display: inline-flex;
+  border-radius: 6px;
+  padding: 8px;
+  color: inherit;
+}
+
+.service-brand {
+  color: inherit;
+  font-size: 24px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  line-height: 1;
+  text-decoration: none;
+}
+
+.shell {
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 40px 16px 56px;
+}
+
+.service-card {
+  border-radius: 8px;
+  box-shadow: 0 1px 2px rgb(34 30 93 / 7%);
 }

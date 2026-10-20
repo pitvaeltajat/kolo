@@ -38,7 +38,7 @@ export default function HeatingCard() {
   }
 
   return (
-    <section className="rounded-2xl border border-border bg-surface p-5">
+    <section className="service-card border border-border bg-surface p-6">
       <h2 className="mb-4 text-sm font-semibold uppercase tracking-wide text-muted">Lämmitys</h2>
 
       {error ? (

@@ -11,22 +11,23 @@ export default function TopBar() {
   const { resolvedTheme, setTheme } = useTheme();
 
   return (
-    <header className="sticky top-0 z-10 border-b border-border bg-surface/80 backdrop-blur">
-      <div className="mx-auto flex max-w-xl items-center gap-3 px-4 py-3">
-        <Link href="/" className="font-semibold tracking-tight">
+    <header className="topbar">
+      <div className="topbar-inner">
+        <Link href="/" className="service-brand">
           Kolo
         </Link>
         <div className="flex-1" />
         <a
           href="https://atk.pitva.fi"
-          className="rounded-md p-2 text-muted hover:text-text"
+          className="topbar-link"
           title="PitVan palvelut"
         >
-          <LayoutGrid size={18} />
+          <LayoutGrid size={15} />
+          ATK
         </a>
         <button
           onClick={() => setTheme(resolvedTheme === 'dark' ? 'light' : 'dark')}
-          className="rounded-md p-2 text-muted hover:text-text"
+          className="topbar-icon"
           title="Vaihda teema"
         >
           {resolvedTheme === 'dark' ? <Sun size={18} /> : <Moon size={18} />}
@@ -34,7 +35,7 @@ export default function TopBar() {
         {session?.user && (
           <button
             onClick={() => signOut({ callbackUrl: '/login' })}
-            className="rounded-md p-2 text-muted hover:text-text"
+            className="topbar-icon"
             title="Kirjaudu ulos"
           >
             <LogOut size={18} />
