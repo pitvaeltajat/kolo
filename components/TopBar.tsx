@@ -3,7 +3,7 @@
 import { signOut, useSession } from 'next-auth/react';
 import { useTheme } from 'next-themes';
 import Link from 'next/link';
-import { Moon, Sun, LogOut, LayoutGrid } from 'lucide-react';
+import { Moon, Sun, LogOut, LayoutGrid, KeyRound } from 'lucide-react';
 
 /** Slim header: title, link back to the atk.pitva.fi hub, theme toggle, sign out. */
 export default function TopBar() {
@@ -25,6 +25,12 @@ export default function TopBar() {
           <LayoutGrid size={15} />
           ATK
         </a>
+        {session?.user && (
+          <Link href="/admin" className="topbar-link" title="Avainten hallinta">
+            <KeyRound size={15} />
+            Avaimet
+          </Link>
+        )}
         <button
           onClick={() => setTheme(resolvedTheme === 'dark' ? 'light' : 'dark')}
           className="topbar-icon"

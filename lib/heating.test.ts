@@ -1,20 +1,20 @@
 import { describe, it, expect } from 'vitest';
 import { activeSetpoint, computeSchedule } from './heating';
-import { COMFORT_C, IDLE_C, clampSetpoint } from './config';
+import { COMFORT_C, IDLE_C } from './config';
 
 const H = 3_600_000;
 const T0 = Date.parse('2026-10-20T00:00:00Z');
 
 describe('activeSetpoint', () => {
-  it('an unexpired manual override wins over the calendar', () => {
+  it('an unexpired three-hour boost wins over the calendar', () => {
     const r = activeSetpoint(T0, [{ startMs: T0, endMs: T0 + H }], { setpointC: 18, untilMs: T0 + H });
-    expect(r).toEqual({ setpointC: 18, source: 'MANUAL' });
+    expect(r).toEqual({ setpointC: COMFORT_C, source: 'BOOST' });
   });
 
   it('a lapsed override falls back to the calendar', () => {
     const events = [{ startMs: T0 + 10 * H, endMs: T0 + 12 * H }];
     const r = activeSetpoint(T0, events, { setpointC: 18, untilMs: T0 - H });
-    expect(r.source).not.toBe('MANUAL');
+    expect(r.source).not.toBe('BOOST');
   });
 
   it('heats during the pre-heat window before an event', () => {
@@ -29,8 +29,8 @@ describe('activeSetpoint', () => {
     expect(activeSetpoint(T0, [], null)).toEqual({ setpointC: IDLE_C, source: 'DEFAULT' });
   });
 
-  it('clamps an out-of-range override', () => {
-    expect(activeSetpoint(T0, [], { setpointC: 99, untilMs: T0 + H }).setpointC).toBe(clampSetpoint(99));
+  it('starts an immediate boost at comfort temperature', () => {
+    expect(activeSetpoint(T0, [], { setpointC: 99, untilMs: T0 + H })).toEqual({ setpointC: COMFORT_C, source: 'BOOST' });
   });
 });
 

@@ -25,7 +25,7 @@ export async function upcomingEvents(nowMs: number = Date.now()): Promise<Event[
   const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
   if (!res.ok) throw new Error(`Calendar events.list failed (${res.status})`);
   const body = (await res.json()) as {
-    items?: { start?: { dateTime?: string; date?: string }; end?: { dateTime?: string; date?: string } }[];
+    items?: { summary?: string; location?: string; start?: { dateTime?: string; date?: string }; end?: { dateTime?: string; date?: string } }[];
   };
 
   const events: Event[] = [];
@@ -34,7 +34,7 @@ export async function upcomingEvents(nowMs: number = Date.now()): Promise<Event[
     const start = item.start?.dateTime;
     const end = item.end?.dateTime;
     if (!start || !end) continue;
-    events.push({ startMs: Date.parse(start), endMs: Date.parse(end) });
+    events.push({ startMs: Date.parse(start), endMs: Date.parse(end), title: item.summary || 'Kalenterivaraus', location: item.location });
   }
   return events;
 }

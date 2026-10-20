@@ -1,6 +1,8 @@
-import { requireAccess } from '@/lib/authz';
+import { requireAccess, requireAdmin } from '@/lib/authz';
 import { getHeatingState } from '@/lib/heatingControl';
 import { DEVICE_SILENT_MS } from '@/lib/config';
+import { upcomingEvents } from '@/lib/calendar';
+import { computeSchedule } from '@/lib/heating';
 import { NextResponse } from 'next/server';
 
 export const runtime = 'nodejs';
@@ -24,8 +26,10 @@ type HeatingChannel = { id: string | number; label?: string; relay?: boolean; po
 export async function GET() {
   const { denied } = await requireAccess();
   if (denied) return denied;
+  const admin = await requireAdmin();
 
   const { state, heaters } = await getHeatingState();
+  const events = await upcomingEvents().catch(() => []);
   const rooms: HeatingRoom[] = heaters.map((h) => ({
     id: h.id,
     kind: h.kind,
@@ -56,7 +60,11 @@ export async function GET() {
   return NextResponse.json({
     setpointC: state.setpointC,
     source: state.source,
-    overrideUntil: state.overrideUntil?.toISOString() ?? null,
+    isAdmin: !admin.denied,
+    areaSetpoints: state.areaSetpoints,
+    boostUntil: state.boostUntil?.toISOString() ?? null,
+    calendarEvents: events.map((e) => ({ ...e, start: new Date(e.startMs).toISOString(), end: new Date(e.endMs).toISOString() })),
+    plan: computeSchedule(Date.now(), events).map((p) => ({ ...p, start: new Date(p.startMs).toISOString(), end: new Date(p.endMs).toISOString() })),
     groups,
     rooms,
   });

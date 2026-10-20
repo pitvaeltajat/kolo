@@ -28,8 +28,9 @@ hardware and must fail safely for the building.
 
 ### User controls and safety sensor
 
-- A wall-mounted boost button requests the normal operating temperature for
-  three hours outside the scheduled hours.
+- The web app has a **Lämpö 3 tunniksi** button. Every signed-in user may use
+  it; it immediately requests normal operating temperature for three hours and
+  overrides the calendar schedule.
 - A sensor beside the coldest pipe forces heating on below **+5 °C**.
 - In a fault state, heating remains on. Fault handling must not silently leave
   the building unheated.
@@ -42,8 +43,11 @@ hardware and must fail safely for the building.
 - The downstairs and upstairs zones use their own temperature sensors.
 - The implementation should expose the current temperatures, zone states and
   active override in the web UI.
-- Remote control is optional; the implementation approach will be decided
-  separately. Local scheduled control must continue without remote access.
+- Only administrators may set the downstairs and upstairs target temperatures
+  in the web app. There is no general-purpose manual temperature slider.
+- The web app shows Google Calendar bookings and the resulting heating plan,
+  including when pre-heating begins (two hours before each booking).
+- Local scheduled control must continue without remote access.
 
 ## Control principles
 

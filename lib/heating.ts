@@ -7,9 +7,9 @@ import { COMFORT_C, IDLE_C, PREHEAT_HOURS, SCHEDULE_DAYS, clampSetpoint } from '
  * thermostat around whatever setpoint this produces (HEATING.md "Design").
  */
 
-export type Event = { startMs: number; endMs: number };
-export type Override = { setpointC: number; untilMs: number };
-export type Source = 'MANUAL' | 'CALENDAR' | 'DEFAULT';
+export type Event = { startMs: number; endMs: number; title?: string; location?: string };
+export type Override = { untilMs: number; setpointC?: number };
+export type Source = 'BOOST' | 'CALENDAR' | 'DEFAULT';
 export type Setpoint = { setpointC: number; source: Source };
 
 const HOUR_MS = 3_600_000;
@@ -28,7 +28,7 @@ function inComfortWindow(nowMs: number, events: Event[]): boolean {
  */
 export function activeSetpoint(nowMs: number, events: Event[], override: Override | null): Setpoint {
   if (override && nowMs < override.untilMs) {
-    return { setpointC: clampSetpoint(override.setpointC), source: 'MANUAL' };
+    return { setpointC: COMFORT_C, source: 'BOOST' };
   }
   if (inComfortWindow(nowMs, events)) return { setpointC: COMFORT_C, source: 'CALENDAR' };
   return { setpointC: IDLE_C, source: 'DEFAULT' };

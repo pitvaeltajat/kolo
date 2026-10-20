@@ -20,8 +20,8 @@ export async function getHeatingState() {
   return { state, heaters };
 }
 
-function overrideFrom(state: { setpointC: number; overrideUntil: Date | null }): Override | null {
-  return state.overrideUntil ? { setpointC: state.setpointC, untilMs: state.overrideUntil.getTime() } : null;
+function overrideFrom(state: { boostUntil: Date | null }): Override | null {
+  return state.boostUntil ? { untilMs: state.boostUntil.getTime() } : null;
 }
 
 /** Next time the calendar-driven setpoint would change, for "override until next calendar change". */
@@ -44,26 +44,39 @@ export async function refreshHeating(events: Event[], nowMs: number = Date.now()
   const active = activeSetpoint(nowMs, events, overrideFrom(state));
   const periods = computeSchedule(nowMs, events);
 
-  await publishSigned('heating', 'kolo/heating/setpoint', { setpointC: active.setpointC, source: active.source });
+  const areaSetpoints = (state.areaSetpoints as Record<string, number>) ?? {};
+  await publishSigned('heating', 'kolo/heating/setpoint', { setpointC: active.setpointC, source: active.source, areaSetpoints });
   await publishSigned('heating', 'kolo/heating/schedule', { periods });
 
   // Clear a spent override so `source` reflects reality once it lapses.
-  const overrideUntil = active.source === 'MANUAL' ? state.overrideUntil : null;
+  const boostUntil = active.source === 'BOOST' ? state.boostUntil : null;
   await prisma.heatingState.update({
     where: { id: SINGLETON },
-    data: { setpointC: active.setpointC, source: active.source, overrideUntil },
+    data: { setpointC: active.setpointC, source: active.source, boostUntil, overrideUntil: null },
   });
   return active;
 }
 
-/** The slider: set a manual override that holds until the next calendar change, then publish. */
-export async function setManualSetpoint(setpointC: number, events: Event[], nowMs: number = Date.now()) {
-  const preheatMs = 2 * 3_600_000; // PREHEAT_HOURS; kept local to avoid a config import cycle in tests
-  const untilMs = nextBoundaryMs(nowMs, events, preheatMs);
+/** Admin-only area setpoint. It is stored separately for downstairs/upstairs. */
+export async function setAreaSetpoint(area: string, setpointC: number, events: Event[], nowMs: number = Date.now()) {
+  if (!['downstairs', 'upstairs'].includes(area)) throw new Error('Tuntematon lämmitysalue');
+  const current = await getHeatingState();
+  const areaSetpoints = { ...((current.state.areaSetpoints as Record<string, number>) ?? {}), [area]: clampSetpoint(setpointC) };
   await prisma.heatingState.upsert({
     where: { id: SINGLETON },
-    create: { id: SINGLETON, setpointC: clampSetpoint(setpointC), source: 'MANUAL', overrideUntil: new Date(untilMs) },
-    update: { setpointC: clampSetpoint(setpointC), source: 'MANUAL', overrideUntil: new Date(untilMs) },
+    create: { id: SINGLETON, areaSetpoints },
+    update: { areaSetpoints },
+  });
+  return refreshHeating(events, nowMs);
+}
+
+/** All-user boost: comfort temperature immediately for three hours. */
+export async function startHeatingBoost(events: Event[], nowMs: number = Date.now()) {
+  const until = new Date(nowMs + 3 * 3_600_000);
+  await prisma.heatingState.upsert({
+    where: { id: SINGLETON },
+    create: { id: SINGLETON, setpointC: 20, source: 'BOOST', boostUntil: until },
+    update: { setpointC: 20, source: 'BOOST', boostUntil: until },
   });
   return refreshHeating(events, nowMs);
 }

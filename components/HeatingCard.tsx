@@ -2,37 +2,36 @@
 
 import useSWR from 'swr';
 import { useEffect, useState } from 'react';
-import { Flame, Thermometer } from 'lucide-react';
+import { CalendarDays, Flame, Thermometer, Zap } from 'lucide-react';
 import { fetcher, post } from '@/lib/fetcher';
 import { cn } from '@/lib/cn';
 
 type Heater = { id: string; kind: string; room: string | null; controlGroup: string | null; stale: boolean; relay?: boolean; tempC?: number; powerW?: number };
 type Channel = { id: string | number; label?: string; relay?: boolean; powerW?: number };
 type Group = { id: string; label: string; stale: boolean; relayOn: boolean; activeDevices: number; tempC: number | null; powerW: number | null; channels: Channel[] };
-type Heating = { setpointC: number; source: string; overrideUntil: string | null; groups: Group[]; rooms: Heater[] };
+type HeatingEvent = { title?: string; start: string; end: string; location?: string };
+type HeatingPeriod = { start: string; end: string; setpointC: number };
+type Heating = { setpointC: number; source: string; boostUntil: string | null; isAdmin: boolean; areaSetpoints: Record<string, number>; calendarEvents: HeatingEvent[]; plan: HeatingPeriod[]; groups: Group[]; rooms: Heater[] };
 
 const SOURCE_LABEL: Record<string, string> = {
-  MANUAL: 'käsisäätö',
+  BOOST: '3 h tehostus',
   CALENDAR: 'kalenteri',
   DEFAULT: 'perustila',
 };
 
 export default function HeatingCard() {
   const { data, error, mutate } = useSWR<Heating>('/api/heating', fetcher, { refreshInterval: 30_000 });
-  const [draft, setDraft] = useState<number | null>(null);
+  const [areaDraft, setAreaDraft] = useState<Record<string, number>>({});
   const [msg, setMsg] = useState<string | null>(null);
 
-  // Follow the server value unless the user is mid-drag.
   useEffect(() => {
-    if (data && draft === null) setDraft(data.setpointC);
-  }, [data, draft]);
+    if (data) setAreaDraft((current) => ({ ...data.areaSetpoints, ...current }));
+  }, [data]);
 
-  const value = draft ?? data?.setpointC ?? 12;
-
-  async function commit(v: number) {
+  async function commitArea(area: string) {
     setMsg(null);
     try {
-      await post('/api/heating/setpoint', { setpointC: v });
+      await post('/api/heating/setpoint', { area, setpointC: areaDraft[area] });
       mutate();
     } catch (e) {
       setMsg(e instanceof Error ? e.message : 'Virhe');
@@ -48,27 +47,40 @@ export default function HeatingCard() {
       ) : (
         <>
           <div className="flex items-end justify-between">
-            <span className="text-4xl font-semibold tabular-nums">{value.toFixed(1)}°C</span>
+            <span className="text-4xl font-semibold tabular-nums">{data?.setpointC?.toFixed(1) ?? '—'}°C</span>
             <span className="text-sm text-muted">{SOURCE_LABEL[data?.source ?? 'DEFAULT'] ?? data?.source}</span>
           </div>
 
-          <input
-            type="range"
-            min={5}
-            max={24}
-            step={0.5}
-            value={value}
-            onChange={(e) => setDraft(Number(e.target.value))}
-            onPointerUp={() => draft !== null && commit(draft)}
-            onKeyUp={() => draft !== null && commit(draft)}
-            className="mt-4 w-full accent-[var(--accent)]"
-          />
-          <div className="flex justify-between text-xs text-muted">
-            <span>5°</span>
-            <span>24°</span>
-          </div>
+          <button onClick={() => post('/api/heating/boost').then(() => mutate()).catch((e) => setMsg(e instanceof Error ? e.message : 'Virhe'))} className="mt-4 flex w-full items-center justify-center gap-2 rounded-lg bg-accent px-4 py-3 font-semibold text-accent-fg">
+            <Zap size={17} /> Lämpö 3 tunniksi
+          </button>
+          {data?.boostUntil && <p className="mt-2 text-center text-xs text-muted">Tehostus päällä {new Date(data.boostUntil).toLocaleTimeString('fi-FI', { hour: '2-digit', minute: '2-digit' })} asti</p>}
+
+          {data?.isAdmin && (
+            <div className="mt-4 rounded-lg border border-border p-3">
+              <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted">Ylläpitäjän alueasetukset</h3>
+              <div className="grid gap-2 sm:grid-cols-2">
+                {['downstairs', 'upstairs'].map((area) => (
+                  <label key={area} className="flex items-center justify-between gap-2 text-sm">
+                    {area === 'downstairs' ? 'Alakerta' : 'Yläkerta'}
+                    <span className="flex items-center gap-1"><input type="number" min={5} max={24} step={0.5} value={areaDraft[area] ?? 20} onChange={(e) => setAreaDraft((v) => ({ ...v, [area]: Number(e.target.value) }))} className="w-20 rounded border border-border bg-bg px-2 py-1 text-right" />°C</span>
+                    <button onClick={() => commitArea(area)} className="rounded border border-border px-2 py-1 text-xs">Tallenna</button>
+                  </label>
+                ))}
+              </div>
+            </div>
+          )}
 
           {msg && <p className="mt-2 text-sm text-danger">{msg}</p>}
+
+          <div className="mt-5 rounded-lg border border-border p-3 text-sm">
+            <h3 className="mb-2 flex items-center gap-2 font-medium"><CalendarDays size={16} /> Kalenteri ja lämmityssuunnitelma</h3>
+            <div className="flex flex-col gap-2 text-xs text-muted">
+              {(data?.calendarEvents ?? []).map((event, i) => <div key={`${event.start}-${i}`}><span className="text-text">{event.title}</span> · {new Date(event.start).toLocaleString('fi-FI', { weekday: 'short', day: 'numeric', month: 'numeric', hour: '2-digit', minute: '2-digit' })}–{new Date(event.end).toLocaleTimeString('fi-FI', { hour: '2-digit', minute: '2-digit' })}</div>)}
+              {(data?.plan ?? []).map((period) => <div key={period.start} className="text-success">Lämmitys alkaa {new Date(period.start).toLocaleString('fi-FI', { weekday: 'short', day: 'numeric', month: 'numeric', hour: '2-digit', minute: '2-digit' })} · {period.setpointC}°C</div>)}
+              {!data?.calendarEvents?.length && <span>Ei tulevia varauksia.</span>}
+            </div>
+          </div>
 
           <div className="mt-4 grid gap-2 sm:grid-cols-2">
             {(data?.groups ?? []).map((g) => (

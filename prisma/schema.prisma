@@ -60,9 +60,11 @@ model Device {
 model HeatingState {
   id            String   @id @default("singleton")
   setpointC     Float    @default(12)
-  roomOffsets   Json     @default("{}") // { "eteinen": -0.5 }
-  source        String   @default("DEFAULT") // DEFAULT | MANUAL | CALENDAR
+  roomOffsets   Json     @default("{}") // legacy per-room offsets
+  areaSetpoints Json     @default("{}") // { "downstairs": 20, "upstairs": 20 }
+  source        String   @default("DEFAULT") // DEFAULT | BOOST | CALENDAR
   overrideUntil DateTime? // a manual slider override holds until this time, then calendar takes back over
+  boostUntil    DateTime? // all-user three-hour comfort override
   updatedAt     DateTime @updatedAt
 }
 
