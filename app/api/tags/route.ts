@@ -2,16 +2,26 @@ import { requireAdmin } from '@/lib/authz';
 import prisma from '@/lib/prisma';
 import { pushAllowlist } from '@/lib/allowlist';
 import { NextRequest, NextResponse } from 'next/server';
+import { ACCESS_GROUP } from '@/lib/config';
+import { listMembers } from '@/lib/directory';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-/** All tags, newest first — for the admin table. */
+/** Group users with their current key assignment — for the admin table. */
 export async function GET() {
   const { denied } = await requireAdmin();
   if (denied) return denied;
   const tags = await prisma.tag.findMany({ orderBy: { createdAt: 'desc' } });
-  return NextResponse.json({ tags });
+  const members = ACCESS_GROUP ? await listMembers() : [];
+  const emails = [...new Set([...members, ...tags.map((tag) => tag.memberEmail)])].sort();
+  const users = emails.map((email) => ({
+    email,
+    name: tags.find((tag) => tag.memberEmail === email && tag.memberName)?.memberName ?? null,
+    key: tags.find((tag) => tag.memberEmail === email && tag.active) ?? null,
+    previousKeys: tags.filter((tag) => tag.memberEmail === email && !tag.active),
+  }));
+  return NextResponse.json({ users, tags });
 }
 
 /** Register a tag by UID (manual entry; see /api/tags/enroll for on-reader enrolment). */
