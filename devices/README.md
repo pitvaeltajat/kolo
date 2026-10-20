@@ -5,7 +5,7 @@ advance** of the hardware so the contract is pinned and phases 1→ can start th
 day the parts arrive. Nothing here is on the wall yet.
 
 ```
-                 kolo.pitva.fi (Vercel)
+                 <public-app-host> (Vercel)
    setpoint/schedule │        │ cmd/allowlist        ▲ state / ack / log
    (MQTT, signed)    ▼        ▼ (MQTT, signed)        │ (HTTP POST or MQTT, signed)
             ┌─────────────┐        ┌───────────────────────────┐
@@ -52,14 +52,15 @@ HTTP POSTs carry the same `{device,payload,sig}` envelope as the JSON body.
 
 ## Broker (live)
 
-Mosquitto on the troop's Lightsail box: **`mqtts://mqtt.pitva.fi:8883`**, TLS
+Mosquitto on the deployment host: **`mqtts://<mqtt-host>:8883`**, TLS
 with a private CA (`mqtt-ca.crt` here) + password auth. Each device needs:
 username `kolo`, the shared password, and `mqtt-ca.crt` as its trusted CA.
 
-- **Shelly:** Settings → MQTT → server `mqtt.pitva.fi:8883`, user `kolo`, enable
+- **Shelly:** Settings → MQTT → server `<mqtt-host>:8883`, user from the private
+  deployment configuration, enable
   TLS and upload `mqtt-ca.crt` as the CA (the thermostat *script* assumes the
   device's own MQTT client is already connected).
-- **ESP32:** in `esp32/` secrets.yaml set `mqtt_broker: mqtts://mqtt.pitva.fi:8883`,
+- **ESP32:** in `esp32/` secrets.yaml set `mqtt_broker: mqtts://<mqtt-host>:8883`,
   `mqtt_username: kolo`, and add the `certificate_authority:` from `mqtt-ca.crt`.
 
 ## Contents
