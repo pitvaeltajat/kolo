@@ -4,6 +4,7 @@ import { DEVICE_SILENT_MS } from '@/lib/config';
 import { upcomingEvents } from '@/lib/calendar';
 import { computeSchedule } from '@/lib/heating';
 import { NextResponse } from 'next/server';
+import prisma from '@/lib/prisma';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -30,6 +31,10 @@ export async function GET() {
 
   const { state, heaters } = await getHeatingState();
   const events = await upcomingEvents().catch(() => []);
+  const readings = await prisma.heatingReading.findMany({
+    where: { at: { gte: new Date(Date.now() - 24 * 3_600_000) } },
+    orderBy: { at: 'asc' },
+  });
   const rooms: HeatingRoom[] = heaters.map((h) => ({
     id: h.id,
     kind: h.kind,
@@ -65,6 +70,7 @@ export async function GET() {
     boostUntil: state.boostUntil?.toISOString() ?? null,
     calendarEvents: events.map((e) => ({ ...e, start: new Date(e.startMs).toISOString(), end: new Date(e.endMs).toISOString() })),
     plan: computeSchedule(Date.now(), events).map((p) => ({ ...p, start: new Date(p.startMs).toISOString(), end: new Date(p.endMs).toISOString() })),
+    readings: readings.map((r) => ({ at: r.at.toISOString(), controlGroup: r.controlGroup, room: r.room, tempC: r.tempC, targetC: r.targetC })),
     groups,
     rooms,
   });

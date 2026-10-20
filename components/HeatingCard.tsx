@@ -5,13 +5,15 @@ import { useEffect, useState } from 'react';
 import { CalendarDays, Flame, Thermometer, Zap } from 'lucide-react';
 import { fetcher, post } from '@/lib/fetcher';
 import { cn } from '@/lib/cn';
+import HeatingChart from './HeatingChart';
 
 type Heater = { id: string; kind: string; room: string | null; controlGroup: string | null; stale: boolean; relay?: boolean; tempC?: number; powerW?: number };
 type Channel = { id: string | number; label?: string; relay?: boolean; powerW?: number };
 type Group = { id: string; label: string; stale: boolean; relayOn: boolean; activeDevices: number; tempC: number | null; powerW: number | null; channels: Channel[] };
 type HeatingEvent = { title?: string; start: string; end: string; location?: string };
 type HeatingPeriod = { start: string; end: string; setpointC: number };
-type Heating = { setpointC: number; source: string; boostUntil: string | null; isAdmin: boolean; areaSetpoints: Record<string, number>; calendarEvents: HeatingEvent[]; plan: HeatingPeriod[]; groups: Group[]; rooms: Heater[] };
+type Reading = { at: string; controlGroup: string; room: string | null; tempC: number; targetC: number | null };
+type Heating = { setpointC: number; source: string; boostUntil: string | null; isAdmin: boolean; areaSetpoints: Record<string, number>; calendarEvents: HeatingEvent[]; plan: HeatingPeriod[]; readings: Reading[]; groups: Group[]; rooms: Heater[] };
 
 const SOURCE_LABEL: Record<string, string> = {
   BOOST: '3 h tehostus',
@@ -75,6 +77,10 @@ export default function HeatingCard() {
 
           <div className="mt-5 rounded-lg border border-border p-3 text-sm">
             <h3 className="mb-2 flex items-center gap-2 font-medium"><CalendarDays size={16} /> Kalenteri ja lämmityssuunnitelma</h3>
+            <div className="grid gap-3">
+              <HeatingChart group="downstairs" readings={data?.readings ?? []} plan={data?.plan ?? []} areaSetpoint={data?.areaSetpoints?.downstairs ?? 10} boostUntil={data?.boostUntil ?? null} />
+              <HeatingChart group="upstairs" readings={data?.readings ?? []} plan={data?.plan ?? []} areaSetpoint={data?.areaSetpoints?.upstairs ?? 10} boostUntil={data?.boostUntil ?? null} />
+            </div>
             <div className="flex flex-col gap-2 text-xs text-muted">
               {(data?.calendarEvents ?? []).map((event, i) => <div key={`${event.start}-${i}`}><span className="text-text">{event.title}</span> · {new Date(event.start).toLocaleString('fi-FI', { weekday: 'short', day: 'numeric', month: 'numeric', hour: '2-digit', minute: '2-digit' })}–{new Date(event.end).toLocaleTimeString('fi-FI', { hour: '2-digit', minute: '2-digit' })}</div>)}
               {(data?.plan ?? []).map((period) => <div key={period.start} className="text-success">Lämmitys alkaa {new Date(period.start).toLocaleString('fi-FI', { weekday: 'short', day: 'numeric', month: 'numeric', hour: '2-digit', minute: '2-digit' })} · {period.setpointC}°C</div>)}

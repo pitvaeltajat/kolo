@@ -34,5 +34,17 @@ export async function POST(req: NextRequest) {
     },
   });
 
+  const tempC = typeof state.tempC === 'number' ? state.tempC : null;
+  if (tempC !== null && (kind === 'HEATER' || kind === 'SENSOR') && typeof controlGroup === 'string') {
+    await prisma.heatingReading.create({
+      data: {
+        controlGroup,
+        room: typeof room === 'string' ? room : null,
+        tempC,
+        targetC: typeof state.target === 'number' ? state.target : null,
+      },
+    });
+  }
+
   return NextResponse.json({ ok: true });
 }

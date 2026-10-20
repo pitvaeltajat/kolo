@@ -56,6 +56,19 @@ model Device {
   @@index([kind])
 }
 
+/// Temperature history used by the heating chart. Devices still keep their
+/// latest state in Device; this is the compact time-series for UI history.
+model HeatingReading {
+  id           String   @id @default(cuid())
+  at           DateTime @default(now())
+  controlGroup String
+  room         String?
+  tempC        Float
+  targetC      Float?
+
+  @@index([controlGroup, at])
+}
+
 /// The single heating setpoint plus any manual override. One row, id "singleton".
 model HeatingState {
   id            String   @id @default("singleton")
