@@ -56,7 +56,10 @@ phone ─► Vercel ─► MQTT broker ◄─TLS, opened by ESP32─ ESP32 ─BL
 
 ### ESP32 firmware
 
-Base on existing community ports of `yalexs-ble`, don't write the BLE protocol:
+`yalexs-ble` itself is Python (built on `bleak`) and cannot run on the ESP32 —
+the chip can do the protocol (BLE central + hardware AES), but the library
+can't. So base on an existing **C++** port of the handshake, don't rewrite the
+protocol:
 - [marcusadolfsson/apple-homekey-yale](https://github.com/marcusadolfsson/apple-homekey-yale)
   — ESP32-C6, PN532, C++ Yale BLE driver (offline-key handshake, unlock).
   Closest to this design; also offers Apple Home Key tap-to-unlock.
