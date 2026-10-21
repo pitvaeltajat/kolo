@@ -8,6 +8,8 @@ The goal is centralized, dependable temperature control with an optional
 remote-control path. The heating system remains independent of the door lock
 hardware and must fail safely for the building.
 
+![flow](heating.svg)
+
 ## Hardware and wiring
 
 ### Downstairs
