@@ -26,7 +26,7 @@ Door building only. The heating project ([HEATING.md](HEATING.md)) is a
 ## Architecture (ESP32 only)
 
 ```
-tag   ─► [PN532 + ESP32, one box outside] ─BLE through the door─► Doorman L3
+tag   ─► [PN532 outside] ─cable through wall─► [ESP32 inside] ─BLE─► Doorman L3
 phone ─► Vercel ─► MQTT broker ◄─TLS, opened by ESP32─ ESP32 ─BLE─► lock
 ```
 
@@ -130,29 +130,34 @@ removes the tag from the next allowlist push.
 
 ### Reader and mounting
 
+**Split layout: dumb reader outside, ESP32 inside.** The PN532 must be outside
+(it reads through only ~1–2 cm); the ESP32 need not be. Mount the ESP32 indoors
+and run the PN532's bus out through the wall. Strictly better than one outdoor
+box:
+- **BLE and Wi-Fi are interior** — the ESP32 reaches the lock's inner unit and
+  the router from inside, so the "radio through the door" problem is gone. This
+  removes the main go/no-go risk.
+- **No secrets outside.** The outdoor box holds only reader + LED + buzzer; pry
+  it open and you get a dumb NFC frontend that can't open anything.
+- **Electronics stay warm.** Only the PN532 (chip –30…+85 °C) sees the cold;
+  the dev board with its iffy regulator/USB chip lives indoors.
+
 - **PN532 module** (Elechouse V3 or clone): supports ISO-DEP, needed for
   NTAG 424. RC522 is cheaper but poor at ISO-DEP.
-- PN532 reads through only ~1–2 cm, so it must be outside. **ESP32 goes in the
-  same outdoor box**: short wires (I²C/SPI fine), no data cable through the
-  wall.
-- Box: sealed polycarbonate IP65 (not metal — it would block NFC, BLE and
-  Wi-Fi), breather vent against condensation, conformal-coated boards, cable
-  gland. Green/red LED + buzzer for instant feedback.
-- **Power stays inside**: USB supplies are rated 0…40 °C. Run 5 V over a 2-core
-  outdoor cable through the frame/wall (or use a –40 °C rated DIN-rail supply).
-  The ESP32 + PN532's own few hundred mW keeps the box slightly above ambient.
-- Ratings: ESP32 module –40…+85 °C, PN532 chip –30…+85 °C. Cheap dev boards
-  (regulator, USB chip, capacitors) may be worse — leave the pilot outside for
-  a cold night first; a board with an industrial-rated module is worth it.
-- **Radio through the door:** BLE must reach the lock's inner unit and Wi-Fi
-  the router from outside. Fine through wood; a metal-skinned door or frame
-  can block it — measure RSSI from the mounting spot before drilling.
-- **Physical attack:** the box is reachable by anyone. Unlocking is over BLE,
-  not a wire, so prying the box open does not open the door. Keys live in
-  encrypted flash: enable **flash encryption + secure boot** so a stolen board
-  doesn't leak the offline key. Add a tamper switch → alert via Vercel. If a
-  board is stolen anyway: remove the Yale user/slot and re-fetch a new offline
-  key, rotate the tag master key.
+- **Bus over the wall: UART (HSU) mode, not I²C.** HSU is push-pull and robust
+  over a cable run; I²C is open-drain and goes flaky past ~1 m. Keep the run
+  short (wall thickness + slack, well under 2 m), twisted/shielded. One
+  multi-core cable carries 5 V + GND + TX + RX (+ LED + buzzer) out to the box —
+  the same wall penetration the old layout used for power.
+- Outdoor box: sealed polycarbonate IP65 (not metal — it blocks NFC), breather
+  vent against condensation, conformal-coated PN532, cable gland. Green/red LED
+  + buzzer for instant feedback.
+- Power and the ESP32 stay inside; only the low-power PN532 is outdoors.
+- **Physical attack:** the outdoor box is reachable but holds no keys and no
+  radio to the lock, so prying it open does not open the door. Add a tamper
+  switch → alert via Vercel. Still enable **flash encryption + secure boot** on
+  the indoor ESP32 as defence in depth — the offline key and tag master key
+  never leave that board.
 
 ## Fallback: Raspberry Pi 5 + Home Assistant
 
@@ -210,7 +215,7 @@ microSD ≈ 110 €.
 | Site internet | ✗ | ✓ (cached allowlist) | logs queued |
 | MQTT broker / Vercel / Google | ✗ | ✓ | PIN fallback |
 | ESP32 | ✗ | ✗ | 2–3 PINs for leaders; spare board |
-| Box stolen / vandalised | ✗ | ✗ | PINs; flash encryption; rotate offline key + tag key |
+| Outdoor box vandalised | ✓ | ✗ | only the reader is outside; ESP32 + keys indoors stay safe |
 | Offline key rotated | ✗ | ✗ | dedicated owner account; re-fetch script |
 | BLE contention with Connect bridge | flaky | flaky | test; unplug bridge if needed |
 | Power cut | ✗ | ✗ | lock runs on batteries: PIN + key still work |
@@ -221,8 +226,10 @@ microSD ≈ 110 €.
 1. **Offline key.** Create dedicated Yale owner account, invite to the lock,
    write `yalexs` script to fetch key/slot/MAC.
 2. **ESP32 BLE spike.** Flash `apple-homekey-yale` (or the ESPHome component),
-   100 lock/unlock cycles with the bridge plugged in, measure latency and
-   failures, check lock battery after a week. Go/no-go for ESP32-only.
+   with the ESP32 at its indoor mounting spot (not outside), 100 lock/unlock
+   cycles with the bridge plugged in, measure latency and failures, check lock
+   battery after a week. Go/no-go is now "does the port work with our L3" —
+   interior BLE removes the through-the-door question.
 3. **Vercel + MQTT.** Google sign-in, group check, signed commands, ack, Sheet
    log. Pilot with leaders for ~2 weeks.
 4. **Reader.** ESP32 + PN532 outside, NTAG 424 verify + enrol, allowlist push.
