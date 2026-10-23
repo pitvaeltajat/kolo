@@ -60,7 +60,9 @@ def extract_offline_key(raw: dict) -> list[dict]:
 async def main(show_raw: bool) -> None:
     token = load_access_token()
     async with aiohttp.ClientSession() as session:
-        api = ApiAsync(session, brand=Brand.YALE_HOME)
+        # yale_global is the Nordic/EU Yale Home brand that owns the Doorman L3
+        # (same brand export_yale_oauth.py uses). Override with $YALE_BRAND.
+        api = ApiAsync(session, brand=Brand(os.environ.get("YALE_BRAND", "yale_global")))
         locks = await api.async_get_operable_locks(token)
         if not locks:
             raise SystemExit("No locks on this account.")
