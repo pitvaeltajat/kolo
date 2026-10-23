@@ -7,6 +7,8 @@ granted and revoked by editing group membership — nothing on the lock itself.
 
 ![flow](flow.svg)
 
+Firmware: fork of `apple-homekey-yale`, see [FIRMWARE.md](FIRMWARE.md).
+
 Status (Oct 2026): planning. Decided: local Bluetooth, ESP32-only as the main
 path, Raspberry Pi 5 + Home Assistant as fallback, cloud (Lightsail) as last
 resort.
