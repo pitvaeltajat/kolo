@@ -26,6 +26,23 @@ already implements the hard parts of [PLAN.md](PLAN.md):
   keys-stay-inside split we designed, done over ESP-NOW (`main/RemoteNfcReader.*`,
   `relay-doorbell/`).
 
+## Status: two paths, shared crypto
+
+The repo currently carries **two** firmware routes, and the NTAG 424 work is
+written to serve either:
+
+- **In-repo today: ESPHome** (`devices/esp32/kolo-door.yaml`) on the
+  `splitice/esphome-yale-smartlock` component for BLE. The signed MQTT
+  command/allowlist path, boot self-test, and the NTAG 424 modules are wired
+  here.
+- **Fallback: the C++ fork** below — switch to it if the ESPHome Yale component
+  proves unreliable on the Doorman L3 (its BLE driver is the proven one).
+
+The **NTAG 424 SUN verification + decision** (`devices/esp32/ntag424_sun.h`,
+`kolo_door_tags.h`, self-tested, AN12196 byte-exact) is plain C++/mbedTLS with
+no ESPHome or fork dependency, so it drops into whichever BLE route wins. Only
+the PN532 ISO-DEP read and tag enrol remain, and those are hardware-gated.
+
 ## Outdoor ↔ indoor link: wired vs ESP-NOW
 
 Both keep keys + BLE indoors (our goal). Pick one:

@@ -16,15 +16,42 @@ substitutions:
   device_id: door
   kolo_url: https://kolo.pitva.fi
   # Embedded into the firmware at build. The binary lives in encrypted flash
-  # (see README security notes), so compiling the key in is acceptable here.
+  # (see README security notes), so compiling the keys in is acceptable here.
   kolo_hmac_key: !secret kolo_hmac_key
+  yale_meta_key: !secret yale_meta_key    # shared SDMMetaRead key (32 hex) — decrypts tag PICCData
+  tag_master_mac: !secret tag_master_mac  # per-tag MAC key diversification master (32 hex)
+
+globals:
+  # Allocated in on_boot from the two tag keys above. Holds the allowlist and
+  # per-UID counters in RAM (see kolo_door_tags.h for the NVS caveat).
+  - id: door_tags
+    type: kolo::DoorTags *
+    initial_value: "nullptr"
 
 esphome:
   name: kolo-door
   includes:
     - kolo_crypto.h
+    - ntag424_sun.h          # NTAG 424 DNA SUN verification (AN12196, mbedTLS)
+    - kolo_door_tags.h       # allowlist + replay + per-UID key derivation
+    - ntag424_sun_selftest.h # boot self-test (runs AN12196 vectors on-device)
   libraries:
     - "ArduinoJson"
+  on_boot:
+    priority: 600
+    then:
+      - lambda: |-
+          // Fail loud if the crypto path is wrong on this chip's mbedTLS build.
+          if (!kolo::ntag424_sun_selftest())
+            ESP_LOGE("kolo", "NTAG424 self-test FAILED — do not trust tag auth");
+          // Build the tag decider from the two tag keys (hex in secrets).
+          static uint8_t meta[16], master[16];
+          if (kolo::hex_to_bytes("${yale_meta_key}", meta, 16) &&
+              kolo::hex_to_bytes("${tag_master_mac}", master, 16)) {
+            id(door_tags) = new kolo::DoorTags(meta, master);
+          } else {
+            ESP_LOGE("kolo", "bad yale_meta_key/tag_master_mac hex — tags disabled");
+          }
 
 esp32:
   board: esp32-c6-devkitc-1
@@ -84,6 +111,32 @@ mqtt:
               "\",\"result\":\"" + (ok ? "ok" : "fail") +
               "\",\"ts\":" + to_string(now) + ",\"nonce\":\"" + kolo::random_nonce() + "\"}";
             id(mqtt_client).publish("kolo/door/ack", kolo::envelope("${kolo_hmac_key}", "${device_id}", ack));
+    - topic: kolo/door/allowlist
+      then:
+        - lambda: |-
+            #include <ArduinoJson.h>
+            #include <vector>
+            // Signed envelope, same scheme as cmd. Replaces the whole allowlist.
+            DynamicJsonDocument env(4096);
+            if (deserializeJson(env, x)) return;
+            const char *payload = env["payload"] | "";
+            const char *sig = env["sig"] | "";
+            if (!payload[0] || !sig[0]) return;
+            if (!kolo::sig_equal(kolo::hmac_sha256_hex("${kolo_hmac_key}", payload), sig)) {
+              ESP_LOGW("kolo", "bad allowlist signature"); return;
+            }
+            if (id(door_tags) == nullptr) return;
+            DynamicJsonDocument body(4096);
+            if (deserializeJson(body, payload)) return;
+            std::vector<std::pair<kolo::Uid, std::string>> list;
+            for (JsonObject e : body["entries"].as<JsonArray>()) {
+              const char *uidhex = e["uid"] | "";
+              kolo::Uid uid{};
+              if (strlen(uidhex) >= 14 && kolo::hex_to_bytes(uidhex, uid.data(), 7))
+                list.emplace_back(uid, std::string(e["member"] | ""));
+            }
+            id(door_tags)->set_allowlist(std::move(list));
+            ESP_LOGI("kolo", "allowlist updated: %d entries", (int) list.size());
 
 # ── Yale lock over BLE (community component) ────────────────────────────────
 # Base on a community port (PLAN.md "ESP32 firmware"):
@@ -116,3 +169,23 @@ interval:
             ",\"nonce\":\"" + kolo::random_nonce() + "\"}";
           std::string report = kolo::envelope("${kolo_hmac_key}", "${device_id}", payload);
           ESP_LOGD("kolo", "state → POST ${kolo_url}/api/state : %s", report.c_str());
+
+# ── Tag reader (PN532 + NTAG 424) ───────────────────────────────────────────
+# The crypto + decision are DONE and self-tested (ntag424_sun.h, kolo_door_tags.h,
+# on_boot self-test above). What remains is hardware-only: reading the tag's SDM
+# over ISO-DEP. ESPHome's stock pn532 doesn't expose the APDUs for NTAG 424, so
+# this is a small custom component (phase 4). When it has the tap's two fields —
+# picc_enc[16] and mac[8], from the SDM file / NDEF — it calls:
+#
+#     auto d = id(door_tags)->decide(picc_enc, mac);
+#     if (d.unlock) {
+#       id(yale_lock).unlock();
+#       // signed log: {method:"tag", action:"unlock", result:"ok", member:d.member}
+#     } else {
+#       // signed log with result:"fail", detail:d.reason  (bad_mac/replay/not_allowed)
+#     }
+#
+# Enrol (also phase 4): program a blank NTAG 424 — set file keys and SDM config
+# so taps mirror UID+counter+CMAC, with the per-UID MAC key
+# ntag424_derive_key(tag_master_mac, uid). Trigger: a signed kolo/door/cmd
+# {action:"enroll", member:...}; report the new UID back so kolo adds it.

@@ -1,0 +1,4 @@
+Vendored from https://github.com/Amperstrand/ntag424-vectors
+upstream commit: 78410f8765ef9cebfce8c7c86b5eeec87007354a
+vectors.json sha256: 522cab963c3f7db1ab9249c0d4e207b43abc0b4061323fd5c55755959a4ff65f
+Refresh: re-copy vectors.json and update this file; run verify_ntag424.py
