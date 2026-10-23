@@ -8,20 +8,20 @@ arrive. Nothing here is on the wall yet.
 
 ```mermaid
 flowchart TB
-    V[<public-app-host> (Vercel)]
-    S[setpoint/schedule<br/>(MQTT, signed)]
-    C[cmd/allowlist<br/>(MQTT, signed)]
-    ST[state / ack / log<br/>(HTTP POST or MQTT, signed)]
-    SH[Shelly Pro 3 · ×3 heaters<br/>BLE → BLU H&T]
-    E[ESP32-C3 + PN532 (door box)<br/>BLE → Yale Doorman L3 · NTAG 424 tags]
+    V["<public-app-host> (Vercel)"]
+    S["setpoint/schedule<br/>(MQTT, signed)"]
+    C["cmd/allowlist<br/>(MQTT, signed)"]
+    ST["state / ack / log<br/>(HTTP POST or MQTT, signed)"]
+    SH["Shelly Pro 3 · ×3 heaters<br/>BLE → BLU H&T"]
+    E["ESP32-C3 + PN532 (door box)<br/>BLE → Yale Doorman L3 · NTAG 424 tags"]
 
-    V -->|signed| S
-    V -->|signed| C
+    V -->|"signed"| S
+    V -->|"signed"| C
     S --> SH
     C --> E
-    E -- reports --> ST
-    SH -- reports --> ST
-    ST -.->|signed| V
+    E -- "reports" --> ST
+    SH -- "reports" --> ST
+    ST -.->|"signed"| V
 ```
 
 ## The signing contract (both devices, both directions)
