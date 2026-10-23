@@ -13,10 +13,18 @@ open the door and set the heating; nobody else can. There is no user database.
 
 ## How it fits together
 
-```
-phone ──► kolo.pitva.fi ──► MQTT (signed) ──► ESP32 ──BLE──► Yale lock
-tag   ──► ESP32 (offline allowlist) ──BLE──► Yale lock ; events POSTed back signed
-slider / Google Calendar ──► kolo ──► MQTT (signed) ──► Shelly ×3 ──► heaters
+```mermaid
+flowchart LR
+    P[phone] -->|signed cmd| MQTT
+    K[kolo.pitva.fi] -->|signed cmd| MQTT
+    MQTT -->|signed cmd| E[ESP32]<br/>BLE → Yale lock
+    E -->|BLE| Y[Yale lock]
+    E -->|events POSTed back<br/>signed| K
+    T[tag] -->|offline allowlist| E
+    S[slider / Google Calendar] -->|plan| K
+    K -->|setpoint/schedule<br/>signed| MQTT
+    MQTT -->|signed| SH[Shelly ×3]
+    SH -->|heat| H[heaters]
 ```
 
 The broker is untrusted and only relays: **every command is HMAC-SHA256 signed**

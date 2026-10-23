@@ -27,9 +27,14 @@ Door building only. The heating project ([HEATING.md](HEATING.md)) is a
 
 ## Architecture (ESP32 only)
 
-```
-tag   ─► [PN532 outside] ─cable through wall─► [ESP32 inside] ─BLE─► Doorman L3
-phone ─► Vercel ─► MQTT broker ◄─TLS, opened by ESP32─ ESP32 ─BLE─► lock
+```mermaid
+flowchart LR
+    TAG[tag] -->|NFC| P[PN532 outside]
+    P -->|cable through wall| E[ESP32 inside]
+    E -->|BLE| L[Doorman L3]
+    PH[phone] -->|HTTPS| V[Vercel]
+    V -->|signed cmd| MQTT[MQTT broker]
+    MQTT -->|TLS, opened by ESP32<br/>signed cmd| E
 ```
 
 - **Yale has no public API.** Locally the lock speaks the August/Yale BLE

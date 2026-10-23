@@ -1,4 +1,17 @@
-# ESP32 firmware — fork, don't write
+# ESP32 firmware — C3 spike first, fork as fallback
+
+> **Update (Oct 2026).** For the phase-2 go/no-go spike we're writing a
+> **from-scratch ESP-IDF firmware for the ESP32-C3 supermini** instead —
+> [`devices/esp32-c3/`](../devices/esp32-c3/README.md): BLE driver + serial
+> CLI, no HomeKit/web UI. Same Yale BLE protocol, implemented to the same wire
+> format, with [the fork](#the-fork) as the protocol reference. The C3 board is
+> what's on hand; the fork's C6/HomeKit/web-UI surface is unrelated weight for
+> proving the Doorman L3. If the C3 driver passes the go/no-go, grow it into
+> the full controller; otherwise fall back to this fork plan. The fork below
+> remains the reference for the production feature set (Home Key, split
+> reader, MQTT, web UI).
+
+## The fork
 
 The door firmware is **a fork of
 [marcusadolfsson/apple-homekey-yale](https://github.com/marcusadolfsson/apple-homekey-yale)**,
@@ -46,17 +59,24 @@ drilling for the cable is a problem.
 
 ## Sequencing — why no integration code is written yet
 
-This port targets a Yale **nexTouch** (US mortise), not a **Doorman L3**. The
-BLE protocol is generic Yale Access, so it has a good chance, but it is
-**unverified on the L3**. Writing the three additions before confirming
-`YaleBleLock` drives the L3 is building on sand. Order (matches PLAN.md phases):
+The BLE protocol is generic Yale Access, but it is **unverified on the Doorman
+L3** (the fork targets a Yale **nexTouch**, US mortise). Writing the three
+additions before confirming a BLE driver drives the L3 is building on sand.
+Order (matches PLAN.md phases):
 
-1. **Phase 1 — offline key.** Dedicated Yale owner account → fetch key/slot/MAC.
-2. **Phase 2 — flash the stock fork, prove lock/unlock on the L3** from the
+1. **Phase 1 — offline key.** Dedicated Yale owner account → fetch key/slot/MAC
+   ([`devices/yale/fetch_offline_key.py`](../devices/yale/fetch_offline_key.py)).
+2. **Phase 2 — flash the C3 spike, prove lock/unlock on the L3** from the
    indoor spot, 100 cycles, latency, battery. Go/no-go.
-3. Only then: write additions #1–#3 above.
+3. Only then: write additions #1–#3 above — on the C3 firmware if it passed,
+   on the fork if not.
 
 ## Build
 
-ESP-IDF v5.5.5, ESP32-C6. `idf.py set-target esp32c6 && idf.py build`. The repo's
-`CLAUDE.md` is the real documentation (wire protocol, gotchas, what's unfinished).
+**C3 spike (active):** ESP-IDF v5.4, target `esp32c3`. See
+[`devices/esp32-c3/README.md`](../devices/esp32-c3/README.md) for build, flash,
+and the console commands.
+
+**Fork (fallback):** ESP-IDF v5.5.5, ESP32-C6.
+`idf.py set-target esp32c6 && idf.py build`. The repo's `CLAUDE.md` is the real
+documentation (wire protocol, gotchas, what's unfinished).

@@ -36,3 +36,13 @@ node_modules/
 *.tsbuildinfo
 .vercel
 .env*
+
+# ESP-IDF firmware (devices/esp32-c3) — generated files that are not source.
+devices/esp32-c3/build/
+devices/esp32-c3/sdkconfig
+devices/esp32-c3/sdkconfig.old
+devices/esp32-c3/test/build-test/
+devices/esp32-c3/managed_components/
+
+# ESPHome device secrets (never commit).
+devices/esp32/secrets.yaml

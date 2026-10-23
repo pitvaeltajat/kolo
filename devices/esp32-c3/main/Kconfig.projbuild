@@ -1,0 +1,112 @@
+# kolo door firmware — ESP32-C3 supermini + Yale Doorman L3 over BLE.
+#
+# Phase-1 spike: BLE driver + serial CLI to prove the lock can be driven
+# from the indoor spot (FIRMWARE.md phase 2 go/no-go). No WiFi/MQTT yet.
+
+# --- Yale lock credentials (from devices/yale/fetch_offline_key.py) ---
+# The offline key is a secret: never log it, never commit it. Set it here
+# (menuconfig) or at runtime via the serial console (setkey/setmac/setslot);
+# it persists in NVS either way.
+config YALE_MAC
+    string "Yale lock MAC address"
+    default ""
+    help
+        Lock MAC as AA:BB:CC:DD:EE:FF. Leave empty to provision via the
+        serial console (setmac).
+
+config YALE_SLOT
+    int "Yale offline key slot"
+    default 0
+    range 0 255
+    help
+        Offline key slot number from fetch_offline_key.py.
+
+config YALE_OFFLINE_KEY
+    string "Yale offline key (32 hex chars)"
+    default ""
+    help
+        Offline key from fetch_offline_key.py. Secret — never log it.
+
+# --- Connection timing (mirrors the reference firmware's measured values) ---
+config YALE_DIRECT_CONNECT_MS
+    int "Direct connect timeout (ms)"
+    default 4000
+    help
+        Timeout for a direct connect to the cached lock address. After our
+        own disconnect the lock is slow to advertise again, so this is the
+        long timeout; never scan right after our own disconnect.
+
+config YALE_SCAN_MS
+    int "Scan timeout (ms)"
+    default 8000
+    help
+        Scan duration, used only after DIRECT_FAILURES_BEFORE_SCAN direct
+        connects have failed in a row.
+
+config YALE_DIRECT_FAILURES_BEFORE_SCAN
+    int "Direct failures before scanning"
+    default 3
+    help
+        A failed direct connect with a known address almost always means
+        "out of range"; scanning only holds the radio to learn the same
+        thing. Scan only after this many consecutive direct failures.
+
+config YALE_LINGER_MS
+    int "Session linger after a command (ms)"
+    default 5000
+    help
+        Hold the connection this long after a command so a second command
+        rides the open session (yalexs-ble default). The lock allows very
+        few concurrent connections and drops idle ones after ~30 s.
+
+config YALE_COOLDOWN_MS
+    int "Cooldown between command writes (ms)"
+    default 250
+    help
+        Minimum gap between command-channel writes, timed from command
+        traffic only. Writing too fast can crash the lock's radio.
+
+config YALE_DEDUPE_MS
+    int "Dedupe window for identical commands (ms)"
+    default 2000
+    help
+        A repeat of the same lock/unlock request within this window is
+        coalesced.
+
+config YALE_CONN_ITVL_MIN
+    int "Connection interval min (units of 1.25 ms)"
+    default 15
+    range 6 3200
+    help
+        15 * 1.25 ms = 18.75 ms.
+
+config YALE_CONN_ITVL_MAX
+    int "Connection interval max (units of 1.25 ms)"
+    default 30
+    range 6 3200
+    help
+        30 * 1.25 ms = 37.5 ms.
+
+config YALE_SUPERVISION_TIMEOUT_MS
+    int "Supervision timeout (ms)"
+    default 4000
+    help
+        Link supervision timeout; the lock drops idle connections after
+        ~30 s, so keep this well below that.
+
+# --- Status polling ---
+config YALE_BOOT_READ_DELAY_MS
+    int "Delay before first status read at boot (ms)"
+    default 5000
+
+config YALE_POLL_MS
+    int "Status poll interval (ms)"
+    default 300000
+    help
+        5 minutes.
+
+config YALE_BATTERY_REFRESH_MS
+    int "Battery refresh interval (ms)"
+    default 21600000
+    help
+        6 hours.

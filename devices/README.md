@@ -6,15 +6,22 @@ application script, not replacement firmware. Written **in advance** of the
 hardware so the contract is pinned and phases 1→ can start the day the parts
 arrive. Nothing here is on the wall yet.
 
-```
-                 <public-app-host> (Vercel)
-   setpoint/schedule │        │ cmd/allowlist        ▲ state / ack / log
-   (MQTT, signed)    ▼        ▼ (MQTT, signed)        │ (HTTP POST or MQTT, signed)
-            ┌─────────────┐        ┌───────────────────────────┐
-            │ Shelly Pro 3│        │ ESP32-C6 + PN532 (door box)│
-            │ ×3 heaters  │        │ BLE → Yale Doorman L3      │
-            │ BLE → BLU H&T│        │ NTAG 424 tags              │
-            └─────────────┘        └───────────────────────────┘
+```mermaid
+flowchart TB
+    V[<public-app-host> (Vercel)]
+    S[setpoint/schedule<br/>(MQTT, signed)]
+    C[cmd/allowlist<br/>(MQTT, signed)]
+    ST[state / ack / log<br/>(HTTP POST or MQTT, signed)]
+    SH[Shelly Pro 3 · ×3 heaters<br/>BLE → BLU H&T]
+    E[ESP32-C3 + PN532 (door box)<br/>BLE → Yale Doorman L3 · NTAG 424 tags]
+
+    V -->|signed| S
+    V -->|signed| C
+    S --> SH
+    C --> E
+    E -- reports --> ST
+    SH -- reports --> ST
+    ST -.->|signed| V
 ```
 
 ## The signing contract (both devices, both directions)
@@ -77,7 +84,11 @@ username `kolo`, the shared password, and `mqtt-ca.crt` as its trusted CA.
   upstairs Shelly 1 Gen4 units. It is not needed to make the Pro 3 channels
   independent; stock firmware already exposes O1/O2/O3 separately.
 - `yale/fetch_offline_key.py` — fetch the lock's BLE offline key/slot/MAC (phase 1 door).
-- `esp32/` — ESPHome config + crypto helper for the door controller (phases 2–3).
+- `esp32-c3/` — native ESP-IDF firmware for the door controller's BLE spike
+  (phase-2 go/no-go: from-scratch Yale BLE driver + serial CLI on the
+  ESP32-C3 supermini).
+- `esp32/` — ESPHome config + crypto helper, the alternative door-controller
+  path (prep only; see its README).
 
 Phases follow the plans: [../suunnitelmat/PLAN.md](../suunnitelmat/PLAN.md) (door),
 [../suunnitelmat/HEATING.md](../suunnitelmat/HEATING.md) (heating).
