@@ -153,13 +153,20 @@ box:
   NTAG 424. RC522 is cheaper but poor at ISO-DEP.
 - **Bus over the wall: UART (HSU) mode, not I²C.** HSU is push-pull and robust
   over a cable run; I²C is open-drain and goes flaky past ~1 m. Keep the run
-  short (wall thickness + slack, well under 2 m), twisted/shielded. One
-  multi-core cable carries 5 V + GND + TX + RX (+ LED + buzzer) out to the box —
-  the same wall penetration the old layout used for power.
-- Outdoor box: sealed polycarbonate IP65 (not metal — it blocks NFC), breather
-  vent against condensation, conformal-coated PN532, cable gland. Green/red LED
-  + buzzer for instant feedback.
-- Power and the ESP32 stay inside; only the low-power PN532 is outdoors.
+  short (wall thickness + slack, well under 2 m). **Ordinary Cat5e/6 works** and
+  is ideal: of its 4 pairs use TX+GND in one pair and RX+GND in another (the
+  twist cancels interference near mains), and double up the 4th pair for VCC to
+  cut sag. One cable carries VCC + GND + TX + RX (+ LED + buzzer) out to the box
+  — the same wall penetration the old layout used for power.
+- **The reader draws no local power** — the PN532 is fed from indoors over that
+  same cable (the breakout's onboard 3.3 V regulator runs off the ESP32's 3.3 V
+  or 5 V pin; on a longer run send 5 V so it can't brown out).
+- Outdoor box: **clear/see-through** polycarbonate, IP65+ (not metal — it blocks
+  NFC; a clear PC lid is RF-transparent), breather vent against condensation,
+  conformal-coated PN532, cable gland. Green/red LED + buzzer for instant
+  feedback. PC stays tough at the door's −30 °C where ABS turns brittle.
+- Power and the ESP32 stay inside, in a **clear** indoor box too; only the
+  low-power PN532 is outdoors.
 - **Physical attack:** the outdoor box is reachable but holds no keys and no
   radio to the lock, so prying it open does not open the door. Add a tamper
   switch → alert via Vercel. Still enable **flash encryption + secure boot** on
@@ -185,23 +192,24 @@ is slower; see git history (`e2d2682`) for the full write-up.
 
 Rough Finnish/EU retail estimates (Oct 2026); AliExpress cheaper but slower.
 
-**Phase A — ESP32 BLE spike (~25 €)**
+**Phase A — ESP32 BLE spike (~5 €, board on hand)**
 
 | Item | Qty | ~€ | Note |
 |---|---|---|---|
-| ESP32-C6 dev board | 2 | 20 | one to test, one spare |
+| ESP32 dev board | 0 | 0 | **already have one** (C3 supermini, the firmware target) |
 | USB power supply + cable | 1 | 5–10 | |
 
 **Phase B — reader pilot (~75 €)**
 
 | Item | Qty | ~€ | Note |
 |---|---|---|---|
-| PN532 NFC module V3 | 1 | 10 | |
-| NTAG 424 DNA key fobs | 5 | 10 | pilot batch |
+| PN532 NFC module V3 (HSU/UART-selectable) | 1 | 10 | |
+| NTAG 424 DNA key fobs | 5 | 10 | pilot batch; rewritable, so reuse for testing |
 | LED (green/red) + piezo buzzer + jumper wires | 1 set | 8 | |
-| Polycarbonate IP65 box + breather vent + cable gland | 1 | 20 | |
+| **Clear** polycarbonate IP65 box + breather vent + cable gland | 1 | 20 | outdoor reader; PC lid is RF-transparent + cold-tough |
+| **Clear** small ABS/PC box | 1 | 5 | indoor ESP32 unit |
 | Conformal coating spray | 1 | 12 | |
-| 2-core outdoor cable, ~3 m | 1 | 5 | 5 V from the supply inside |
+| Cat5e/6 cable, ~3 m | 1 | 5 | carries VCC+GND+TX+RX; reader powered from indoors over it |
 | Tamper microswitch | 1 | 2 | box-open alert |
 
 **Phase C — rollout (~40–60 €)**
@@ -210,8 +218,10 @@ Rough Finnish/EU retail estimates (Oct 2026); AliExpress cheaper but slower.
 |---|---|---|---|
 | NTAG 424 DNA key fobs | 25 | 40–60 | ~1.5–2.5 € each |
 
-**Total: ~150 €. Running cost 0 €.**
-No tag programmer needed — the PN532 enrols tags on site.
+**Total: ~135 €. Running cost 0 €.** (ESP32 already on hand; no BT dongle —
+the BLE spike runs on the ESP32 itself, not a Linux host.)
+No tag programmer needed — the PN532 enrols tags on site, and NTAG 424 is
+rewritable (~200k cycles) so the same tags serve for testing and rollout.
 Fallback adds Raspberry Pi 5 4 GB + PSU + passive case + high-endurance
 microSD ≈ 110 €.
 
