@@ -163,6 +163,7 @@ class YaleBleLock {
   bool m_sessionReady = false;
   bool m_scanMatched = false;
   bool m_addrKnown = false;
+  bool m_synced = false;  // NimBLE host has synced (GAP calls are valid)
   bool m_gattCached = false;
 
   int64_t m_lastRxUs = 0;

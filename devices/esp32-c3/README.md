@@ -103,6 +103,27 @@ test/
   soak, measure latency/battery, confirm out-of-range fails cleanly. The GATT
   cache must survive a reboot (second connect skips discovery).
 
+## Troubleshooting: "connect failed: status=9"
+
+`status=9` is `BLE_ERR_CONN_LIMIT` (and `status=13` is
+`BLE_ERR_CONN_REJ_RESOURCES`): the lock is a **single-connection device** and
+is already connected to something else. The Yale Connect bridge, the Yale Home
+app, and Apple Home all hold its one slot, and the lock drops idle links only
+after **~30 s**.
+
+To free the slot:
+
+1. Unplug the Yale Connect bridge (and any other Yale hub).
+2. Close the Yale Home app and Apple Home / HomeKit on every phone/tablet.
+3. Wait **30–60 s** for the lock to drop the stale link.
+4. Run `status` again.
+
+The firmware already retries (`YALE_CONNECT_ATTEMPTS`, default 5) with a
+generous backoff (`YALE_CONNECT_RETRY_BACKOFF_MS`, default 4000 ms) so it can
+catch a slot as it frees up, but it cannot force the lock to drop a live
+connection. If the lock stays busy after everything is disconnected, pull the
+lock's battery for a few seconds to reset its radio.
+
 ## Security notes
 
 - The offline key is never logged; `info` masks it.

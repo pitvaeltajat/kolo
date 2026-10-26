@@ -30,11 +30,14 @@ config YALE_OFFLINE_KEY
 # --- Connection timing (mirrors the reference firmware's measured values) ---
 config YALE_DIRECT_CONNECT_MS
     int "Direct connect timeout (ms)"
-    default 4000
+    default 10000
     help
         Timeout for a direct connect to the cached lock address. After our
         own disconnect the lock is slow to advertise again, so this is the
-        long timeout; never scan right after our own disconnect.
+        long timeout; never scan right after our own disconnect. The lock
+        also refuses connections while the Yale Connect bridge (or the Yale
+        app / Apple Home) holds one, so a longer timeout rides out a brief
+        contention window.
 
 config YALE_SCAN_MS
     int "Scan timeout (ms)"
@@ -42,6 +45,26 @@ config YALE_SCAN_MS
     help
         Scan duration, used only after DIRECT_FAILURES_BEFORE_SCAN direct
         connects have failed in a row.
+
+config YALE_CONNECT_ATTEMPTS
+    int "Connect attempts per session"
+    default 5
+    help
+        The lock is a single-connection device: while the Yale Connect
+        bridge, the Yale app, or Apple Home holds its one slot it rejects us
+        with BLE_ERR_CONN_LIMIT (0x09) or BLE_ERR_CONN_REJ_RESOURCES (0x0d),
+        and it drops idle links only after ~30 s. Several spaced-out attempts
+        let us catch a slot as it frees up.
+
+config YALE_CONNECT_RETRY_BACKOFF_MS
+    int "Backoff between connect attempts (ms)"
+    default 4000
+    help
+        Delay between failed connect attempts. A failed attempt can leave the
+        lock briefly thinking it is still connected, and the ESP32 controller
+        needs time to release its own connection slot, so retrying too fast
+        just fails again. 4 s mirrors bleak-retry-connector's out-of-slots
+        backoff.
 
 config YALE_DIRECT_FAILURES_BEFORE_SCAN
     int "Direct failures before scanning"

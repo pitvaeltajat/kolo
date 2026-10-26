@@ -42,6 +42,12 @@ constexpr uint32_t DEDUPE_MS = CONFIG_YALE_DEDUPE_MS;
 constexpr uint16_t CONN_ITVL_MIN = CONFIG_YALE_CONN_ITVL_MIN;
 constexpr uint16_t CONN_ITVL_MAX = CONFIG_YALE_CONN_ITVL_MAX;
 constexpr uint16_t SUPERVISION_TIMEOUT_MS = CONFIG_YALE_SUPERVISION_TIMEOUT_MS;
+// The lock is a single-connection device and drops idle links only after
+// ~30 s, so a busy lock needs several spaced-out attempts to catch a free
+// slot. Backoff is deliberately long (see bleak-retry-connector's 4 s
+// out-of-slots backoff and ESP-IDF's connection-slot release race).
+constexpr int CONNECT_ATTEMPTS = CONFIG_YALE_CONNECT_ATTEMPTS;
+constexpr uint32_t CONNECT_RETRY_BACKOFF_MS = CONFIG_YALE_CONNECT_RETRY_BACKOFF_MS;
 
 // GATT discovery timeouts.
 constexpr uint32_t GATT_MS = 10000;
@@ -87,9 +93,19 @@ YaleBleLock::~YaleBleLock() {
 
 void YaleBleLock::begin() {
   if (!m_enabled) return;
+  esp_log_level_set(TAG, ESP_LOG_DEBUG);  // show advertisements during the spike
   m_events = xQueueCreate(24, sizeof(Ev));
   m_commands = xQueueCreate(4, sizeof(Cmd));
   loadCache();
+
+  // Bring up the NimBLE host. Without this the GAP/GATT calls fail (the host
+  // is unsynced). The host task runs the NimBLE event loop; our worker task
+  // consumes the events it posts.
+  ESP_ERROR_CHECK(nimble_port_init());
+  ble_hs_cfg.sync_cb = onSync;
+  ble_hs_cfg.reset_cb = onReset;
+  nimble_port_freertos_init(hostTask);
+
   xTaskCreatePinnedToCore(taskEntry, "yale_ble", 4096, this, 5, &m_task, 0);
 }
 
@@ -137,12 +153,15 @@ void YaleBleLock::run() {
     switch (ev.type) {
       case EvType::Synced:
         ESP_LOGI(TAG, "NimBLE host synced");
+        m_synced = true;
         break;
       case EvType::DiscFound:
         ESP_LOGI(TAG, "lock found: %02x:%02x:%02x:%02x:%02x:%02x rssi=%d",
-                 ev.addr[0], ev.addr[1], ev.addr[2], ev.addr[3], ev.addr[4],
-                 ev.addr[5], ev.status);
+                 ev.addr[5], ev.addr[4], ev.addr[3], ev.addr[2], ev.addr[1],
+                 ev.addr[0], ev.status);
         m_scanMatched = true;
+        m_peerAddrType = ev.addrType;
+        m_addrKnown = true;
         break;
       case EvType::DiscSeen:
         // A scan report for the lock; remember its address type.
@@ -195,6 +214,19 @@ void YaleBleLock::run() {
 // ------------------------------------------------------------------ NimBLE
 
 void YaleBleLock::onSync() {
+  // Ensure we have a usable identity address before any GAP procedure.
+  int rc = ble_hs_util_ensure_addr(0);
+  if (rc != 0) {
+    ESP_LOGE(TAG, "ble_hs_util_ensure_addr failed (rc=%d)", rc);
+  }
+  // Log our own address so a bad/zero identity is visible.
+  uint8_t own[6];
+  if (ble_hs_id_copy_addr(BLE_ADDR_PUBLIC, own, nullptr) == 0) {
+    ESP_LOGI(TAG, "own public addr %02x:%02x:%02x:%02x:%02x:%02x",
+             own[5], own[4], own[3], own[2], own[1], own[0]);
+  } else {
+    ESP_LOGW(TAG, "no public own address");
+  }
   if (s_instance) s_instance->post(Ev{EvType::Synced});
 }
 
@@ -214,21 +246,48 @@ int YaleBleLock::gapEvent(ble_gap_event* event, void* arg) {
   switch (event->type) {
     case BLE_GAP_EVENT_DISC: {
       const ble_gap_disc_desc* desc = &event->disc;
-      // Parse the advertising data to find the manufacturer field.
+      // desc->addr.val is little-endian (LSB first); our m_mac is MSB first.
+      const uint8_t* a = desc->addr.val;
       ble_hs_adv_fields fields;
-      if (ble_hs_adv_parse_fields(&fields, desc->data, desc->length_data) != 0)
-        break;
-      // Yale/August advertises with company id 465 (0x01D1) or an Apple
-      // HomeKit-over-BLE advert (company 76, type 0x06).
-      bool yaleish = false;
-      if (fields.mfg_data && fields.mfg_data_len >= 2) {
-        const uint16_t company = fields.mfg_data[0] | (fields.mfg_data[1] << 8);
-        if (company == 465) yaleish = true;
-        if (company == 76 && fields.mfg_data_len >= 3 &&
-            fields.mfg_data[2] == 0x06)
-          yaleish = true;
+      const int prc = ble_hs_adv_parse_fields(&fields, desc->data, desc->length_data);
+      uint16_t company = 0xFFFF;
+      if (prc == 0 && fields.mfg_data && fields.mfg_data_len >= 2) {
+        company = fields.mfg_data[0] | (fields.mfg_data[1] << 8);
       }
-      if (!yaleish) break;
+      // Log name + 16-bit service UUIDs so we can spot the lock even if it
+      // advertises under a random address.
+      char name[32] = {0};
+      if (prc == 0 && fields.name && fields.name_len) {
+        const int n = fields.name_len < 31 ? fields.name_len : 31;
+        std::memcpy(name, fields.name, n);
+      }
+      uint16_t svc = 0;
+      if (prc == 0 && fields.num_uuids16 > 0 && fields.uuids16) {
+        svc = fields.uuids16[0].value;
+      }
+      ESP_LOGD(TAG, "adv %02x:%02x:%02x:%02x:%02x:%02x rssi=%d type=%d evt=%d len=%d mfg=%04x svc=%04x name='%s'",
+               a[5], a[4], a[3], a[2], a[1], a[0], desc->rssi, desc->addr.type,
+               desc->event_type, desc->length_data, company, svc, name);
+
+      // Primary match: the configured lock MAC.
+      bool match = false;
+      if (self->m_mac[0] == a[5] && self->m_mac[1] == a[4] &&
+          self->m_mac[2] == a[3] && self->m_mac[3] == a[2] &&
+          self->m_mac[4] == a[1] && self->m_mac[5] == a[0]) {
+        match = true;
+      }
+
+      // Fallback: Yale/August manufacturer data (company 465 / 0x01D1), an
+      // Apple HomeKit-over-BLE advert (company 76, type 0x06), or the Yale
+      // Access BLE service 0xFE24.
+      if (!match && prc == 0) {
+        if (fields.mfg_data && fields.mfg_data_len >= 2) {
+          if (company == 465) match = true;
+          if (company == 76 && fields.mfg_data_len >= 3 && fields.mfg_data[2] == 0x06) match = true;
+        }
+        if (svc == 0xFE24) match = true;
+      }
+      if (!match) break;
 
       Ev ev{};
       ev.type = EvType::DiscFound;
@@ -245,6 +304,7 @@ int YaleBleLock::gapEvent(ble_gap_event* event, void* arg) {
         ev.status = event->connect.conn_handle;
         self->post(ev);
       } else {
+        ESP_LOGW(TAG, "connect failed: status=%d", event->connect.status);
         Ev ev{};
         ev.type = EvType::ConnectFailed;
         ev.status = event->connect.status;
@@ -370,6 +430,21 @@ int YaleBleLock::onWrite(uint16_t conn, const ble_gatt_error* error,
 bool YaleBleLock::ensureConnected() {
   if (m_conn != 0xFFFF && m_sessionReady) return true;
 
+  // Wait for the NimBLE host to sync before any GAP call.
+  if (!m_synced) {
+    const int64_t deadline = esp_timer_get_time() + 3000000;  // 3 s
+    while (!m_synced && esp_timer_get_time() < deadline) {
+      Ev ev{};
+      if (xQueueReceive(m_events, &ev, pdMS_TO_TICKS(50)) == pdTRUE && ev.type == EvType::Synced) {
+        m_synced = true;
+      }
+    }
+    if (!m_synced) {
+      ESP_LOGE(TAG, "NimBLE host did not sync");
+      return false;
+    }
+  }
+
   // If we have a cached address, try a direct connect first.
   if (m_addrKnown) {
     if (connectDirect(DIRECT_CONNECT_MS)) {
@@ -440,17 +515,29 @@ bool YaleBleLock::scanAndConnect() {
     return false;
   }
 
+  // Connect as soon as the lock is seen — do NOT wait for the scan to finish.
+  // The lock advertises briefly and won't accept a connection long after; a
+  // full-window wait meant connecting ~30 s after the advert and timing out.
   Ev ev{};
-  if (!waitFor(EvType::DiscDone, SCAN_MS, ev)) {
+  if (!waitFor(EvType::DiscFound, SCAN_MS, ev)) {
     ble_gap_disc_cancel();
-    return false;
-  }
-  if (!m_scanMatched) {
     ESP_LOGW(TAG, "lock not found in scan");
     return false;
   }
+  const int rssi = ev.status;
+  // Cancel the scan and WAIT for it to actually stop before connecting: the
+  // controller rejects a connect issued while a scan is still active with
+  // BLE_ERR_CONN_LIMIT (0x09).
+  ble_gap_disc_cancel();
+  waitFor(EvType::DiscDone, 2000, ev);
+  ESP_LOGI(TAG, "lock seen (rssi=%d), connecting", rssi);
 
-  // Connect to the address we saw.
+  // Connect to the address we saw. The lock is a single-connection device:
+  // while the Yale bridge / app / Apple Home holds its one slot it rejects us
+  // with BLE_ERR_CONN_LIMIT (0x09) or BLE_ERR_CONN_REJ_RESOURCES (0x0d), and
+  // it drops idle connections only after ~30 s. A failed attempt can also
+  // leave the lock briefly thinking it is still connected, so retry with a
+  // generous backoff rather than hammering it.
   ble_addr_t addr{};
   addr.type = m_peerAddrType;
   std::memcpy(addr.val, m_mac.data(), 6);
@@ -464,17 +551,22 @@ bool YaleBleLock::scanAndConnect() {
       .min_ce_len = 0,
       .max_ce_len = 0,
   };
-  rc = ble_gap_connect(BLE_OWN_ADDR_PUBLIC, &addr, DIRECT_CONNECT_MS, &params,
-                       gapEvent, this);
-  if (rc != 0) {
-    ESP_LOGE(TAG, "ble_gap_connect failed (rc=%d)", rc);
-    return false;
-  }
-  if (!waitFor(EvType::Connected, DIRECT_CONNECT_MS, ev)) {
+  for (int attempt = 1; attempt <= CONNECT_ATTEMPTS; ++attempt) {
+    rc = ble_gap_connect(BLE_OWN_ADDR_PUBLIC, &addr, DIRECT_CONNECT_MS, &params,
+                         gapEvent, this);
+    if (rc != 0) {
+      ESP_LOGE(TAG, "ble_gap_connect failed (rc=%d)", rc);
+      return false;
+    }
+    if (waitFor(EvType::Connected, DIRECT_CONNECT_MS, ev)) return true;
     ble_gap_conn_cancel();
-    return false;
+    ESP_LOGW(TAG, "connect attempt %d/%d failed (lock busy or out of range)",
+             attempt, CONNECT_ATTEMPTS);
+    if (attempt < CONNECT_ATTEMPTS) {
+      vTaskDelay(pdMS_TO_TICKS(CONNECT_RETRY_BACKOFF_MS));
+    }
   }
-  return true;
+  return false;
 }
 
 bool YaleBleLock::discover() {
@@ -867,13 +959,31 @@ bool YaleBleLock::waitFor(EvType type, uint32_t timeoutMs, Ev& out) {
         break;
       case EvType::ConnectFailed:
         m_conn = 0xFFFF;
+        // A rejected connect (e.g. the lock is at its connection limit) is
+        // final for this attempt — return at once so the caller can back off
+        // and retry instead of blocking for the whole connect timeout.
+        if (type == EvType::Connected) {
+          out = ev;
+          return false;
+        }
         break;
       case EvType::Connected:
         m_conn = static_cast<uint16_t>(ev.status);
         m_directFailures = 0;
         break;
+      case EvType::DiscFound:
+        // The lock answered the scan; remember it so scanAndConnect() can
+        // connect. (waitFor(DiscDone) consumes this event, so it must be
+        // handled here, not only in run().)
+        m_scanMatched = true;
+        m_peerAddrType = ev.addrType;
+        m_addrKnown = true;
+        break;
+      case EvType::Synced:
+        m_synced = true;
+        break;
       default:
-        break;  // ignore (DiscFound, DiscDone, GattDone, Synced, NotifySecure)
+        break;  // ignore (DiscDone, GattDone, NotifySecure)
     }
   }
 }
