@@ -156,17 +156,41 @@ box:
   short (wall thickness + slack, well under 2 m). **Ordinary Cat5e/6 works** and
   is ideal: of its 4 pairs use TX+GND in one pair and RX+GND in another (the
   twist cancels interference near mains), and double up the 4th pair for VCC to
-  cut sag. One cable carries VCC + GND + TX + RX (+ LED + buzzer) out to the box
-  — the same wall penetration the old layout used for power.
+  cut sag. One cable carries everything out to the box — the same wall
+  penetration the old layout used for power. Conductor budget on 8 wires:
+  VCC ×2, shared GND ×1, TX, RX = 5; the **3 spare** carry the status LED,
+  the buzzer, and the tamper switch (all sharing that one GND return).
 - **The reader draws no local power** — the PN532 is fed from indoors over that
   same cable (the breakout's onboard 3.3 V regulator runs off the ESP32's 3.3 V
   or 5 V pin; on a longer run send 5 V so it can't brown out).
 - Outdoor box: **clear/see-through** polycarbonate, IP65+ (not metal — it blocks
   NFC; a clear PC lid is RF-transparent), breather vent against condensation,
-  conformal-coated PN532, cable gland. Green/red LED + buzzer for instant
-  feedback. PC stays tough at the door's −30 °C where ABS turns brittle.
+  conformal-coated PN532, cable gland. PC stays tough at the door's −30 °C where
+  ABS turns brittle.
 - Power and the ESP32 stay inside, in a **clear** indoor box too; only the
   low-power PN532 is outdoors.
+- **State feedback (LED + buzzer).** No special board peripheral — the indoor
+  ESP32 drives both on plain GPIO; the PN532's own power LED isn't usable. Use
+  a single **WS2812/NeoPixel** (one data pin, any colour → more states, one
+  fewer conductor than a discrete red/green LED) and an **active** buzzer
+  (self-oscillating: one GPIO high/low, a flat ~2–4 kHz beep, no tone code).
+  Both live in the outdoor box, driven from indoors over the spare cable
+  conductors. Map:
+
+  | State | LED | Buzzer |
+  |---|---|---|
+  | Idle / ready | dim green or off | silent |
+  | Tag accepted, unlocking | green | one short beep |
+  | **Door confirmed unlocked (BLE ack)** | green flash | short double-beep |
+  | Denied (valid tag, not on allowlist) | red | three quick beeps |
+  | Bad / unknown tag, read error | red | one long beep |
+  | Enrol mode waiting for tap | blue pulsing | silent |
+
+  Beep on the lock's **confirmation**, not just a valid tap — else it chirps
+  "yes" when BLE failed and the door never moved. WS2812 data wants ≥3.3 V
+  logic; over this short run a 3.3 V pin is fine (if powered at 5 V and it
+  flickers, run the pixel at 3.3 V). A piezo sealed in the box is muffled —
+  mount it flush to the wall or use a louder active buzzer.
 - **Physical attack:** the outdoor box is reachable but holds no keys and no
   radio to the lock, so prying it open does not open the door. Add a tamper
   switch → alert via Vercel. Still enable **flash encryption + secure boot** on
@@ -205,7 +229,7 @@ Rough Finnish/EU retail estimates (Oct 2026); AliExpress cheaper but slower.
 |---|---|---|---|
 | PN532 NFC module V3 (HSU/UART-selectable) | 1 | 10 | |
 | NTAG 424 DNA key fobs | 5 | 10 | pilot batch; rewritable, so reuse for testing |
-| LED (green/red) + piezo buzzer + jumper wires | 1 set | 8 | |
+| WS2812 LED + active buzzer + jumper wires | 1 set | 8 | one-pin RGB status + flat-beep feedback |
 | **Clear** polycarbonate IP65 box + breather vent + cable gland | 1 | 20 | outdoor reader; PC lid is RF-transparent + cold-tough |
 | **Clear** small ABS/PC box | 1 | 5 | indoor ESP32 unit |
 | Conformal coating spray | 1 | 12 | |
