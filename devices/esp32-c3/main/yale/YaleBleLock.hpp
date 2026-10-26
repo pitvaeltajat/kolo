@@ -101,6 +101,7 @@ class YaleBleLock {
   static void taskEntry(void* arg);
   void run();
   bool ensureConnected();
+  bool establishSession();
   bool scanAndConnect();
   bool connectDirect(uint32_t timeoutMs);
   bool discover();
@@ -157,6 +158,9 @@ class YaleBleLock {
 
   uint16_t m_svcStart = 0, m_svcEnd = 0;
   uint16_t m_hWrite = 0, m_hRead = 0, m_hSecWrite = 0, m_hSecRead = 0;
+  // Declaration handles, used to bound descriptor discovery (the CCCD of a
+  // characteristic lives between its value handle and the next declaration).
+  uint16_t m_defWrite = 0, m_defRead = 0, m_defSecWrite = 0, m_defSecRead = 0;
   uint16_t m_hReadCccd = 0, m_hSecReadCccd = 0;
   uint8_t m_readProps = 0, m_secReadProps = 0;
   uint16_t m_dscTarget = 0;  // characteristic whose CCCD is being searched

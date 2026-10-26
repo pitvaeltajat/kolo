@@ -16,13 +16,27 @@ YaleBleLock* YaleBleLock::s_instance = nullptr;
 namespace {
 
 // Service and characteristic UUIDs (Yale Access BLE).
+// The service is a 16-bit SIG UUID (0xFE24), but the characteristics use the
+// vendor base bd4ac6xx-0b45-11e3-8ffd-0800200c9a66 — NOT the SIG base — so
+// they are 128-bit and must be matched with ble_uuid_cmp, not a 16-bit value.
 constexpr uint16_t SVC_YALE = 0xFE24;
-// Characteristic UUIDs: command write …611, command notify …612,
-// secure write …613, secure notify …614.
-constexpr uint16_t CHR_CMD_WRITE = 0x0611;
-constexpr uint16_t CHR_CMD_NOTIFY = 0x0612;
-constexpr uint16_t CHR_SEC_WRITE = 0x0613;
-constexpr uint16_t CHR_SEC_NOTIFY = 0x0614;
+// NimBLE stores 128-bit UUIDs little-endian (the string read backwards).
+// bd4ac611-0b45-11e3-8ffd-0800200c9a66 (command write)
+const ble_uuid128_t UUID_CMD_WRITE =
+    BLE_UUID128_INIT(0x66, 0x9a, 0x0c, 0x20, 0x00, 0x08, 0xfd, 0x8f, 0xe3,
+                     0x11, 0x45, 0x0b, 0x11, 0xc6, 0x4a, 0xbd);
+// bd4ac612-… (command notify)
+const ble_uuid128_t UUID_CMD_NOTIFY =
+    BLE_UUID128_INIT(0x66, 0x9a, 0x0c, 0x20, 0x00, 0x08, 0xfd, 0x8f, 0xe3,
+                     0x11, 0x45, 0x0b, 0x12, 0xc6, 0x4a, 0xbd);
+// bd4ac613-… (secure write)
+const ble_uuid128_t UUID_SEC_WRITE =
+    BLE_UUID128_INIT(0x66, 0x9a, 0x0c, 0x20, 0x00, 0x08, 0xfd, 0x8f, 0xe3,
+                     0x11, 0x45, 0x0b, 0x13, 0xc6, 0x4a, 0xbd);
+// bd4ac614-… (secure notify)
+const ble_uuid128_t UUID_SEC_NOTIFY =
+    BLE_UUID128_INIT(0x66, 0x9a, 0x0c, 0x20, 0x00, 0x08, 0xfd, 0x8f, 0xe3,
+                     0x11, 0x45, 0x0b, 0x14, 0xc6, 0x4a, 0xbd);
 
 constexpr uint8_t OP_GETSTATUS = yale::OP_GETSTATUS;
 constexpr uint8_t OP_UNLOCK = yale::OP_UNLOCK;
@@ -47,7 +61,8 @@ constexpr uint16_t SUPERVISION_TIMEOUT_MS = CONFIG_YALE_SUPERVISION_TIMEOUT_MS;
 // slot. Backoff is deliberately long (see bleak-retry-connector's 4 s
 // out-of-slots backoff and ESP-IDF's connection-slot release race).
 constexpr int CONNECT_ATTEMPTS = CONFIG_YALE_CONNECT_ATTEMPTS;
-constexpr uint32_t CONNECT_RETRY_BACKOFF_MS = CONFIG_YALE_CONNECT_RETRY_BACKOFF_MS;
+constexpr uint32_t CONNECT_RETRY_BACKOFF_MS =
+    CONFIG_YALE_CONNECT_RETRY_BACKOFF_MS;
 
 // GATT discovery timeouts.
 constexpr uint32_t GATT_MS = 10000;
@@ -93,7 +108,8 @@ YaleBleLock::~YaleBleLock() {
 
 void YaleBleLock::begin() {
   if (!m_enabled) return;
-  esp_log_level_set(TAG, ESP_LOG_DEBUG);  // show advertisements during the spike
+  esp_log_level_set(TAG,
+                    ESP_LOG_DEBUG);  // show advertisements during the spike
   m_events = xQueueCreate(24, sizeof(Ev));
   m_commands = xQueueCreate(4, sizeof(Cmd));
   loadCache();
@@ -222,8 +238,8 @@ void YaleBleLock::onSync() {
   // Log our own address so a bad/zero identity is visible.
   uint8_t own[6];
   if (ble_hs_id_copy_addr(BLE_ADDR_PUBLIC, own, nullptr) == 0) {
-    ESP_LOGI(TAG, "own public addr %02x:%02x:%02x:%02x:%02x:%02x",
-             own[5], own[4], own[3], own[2], own[1], own[0]);
+    ESP_LOGI(TAG, "own public addr %02x:%02x:%02x:%02x:%02x:%02x", own[5],
+             own[4], own[3], own[2], own[1], own[0]);
   } else {
     ESP_LOGW(TAG, "no public own address");
   }
@@ -249,7 +265,8 @@ int YaleBleLock::gapEvent(ble_gap_event* event, void* arg) {
       // desc->addr.val is little-endian (LSB first); our m_mac is MSB first.
       const uint8_t* a = desc->addr.val;
       ble_hs_adv_fields fields;
-      const int prc = ble_hs_adv_parse_fields(&fields, desc->data, desc->length_data);
+      const int prc =
+          ble_hs_adv_parse_fields(&fields, desc->data, desc->length_data);
       uint16_t company = 0xFFFF;
       if (prc == 0 && fields.mfg_data && fields.mfg_data_len >= 2) {
         company = fields.mfg_data[0] | (fields.mfg_data[1] << 8);
@@ -265,7 +282,9 @@ int YaleBleLock::gapEvent(ble_gap_event* event, void* arg) {
       if (prc == 0 && fields.num_uuids16 > 0 && fields.uuids16) {
         svc = fields.uuids16[0].value;
       }
-      ESP_LOGD(TAG, "adv %02x:%02x:%02x:%02x:%02x:%02x rssi=%d type=%d evt=%d len=%d mfg=%04x svc=%04x name='%s'",
+      ESP_LOGD(TAG,
+               "adv %02x:%02x:%02x:%02x:%02x:%02x rssi=%d type=%d evt=%d "
+               "len=%d mfg=%04x svc=%04x name='%s'",
                a[5], a[4], a[3], a[2], a[1], a[0], desc->rssi, desc->addr.type,
                desc->event_type, desc->length_data, company, svc, name);
 
@@ -283,7 +302,9 @@ int YaleBleLock::gapEvent(ble_gap_event* event, void* arg) {
       if (!match && prc == 0) {
         if (fields.mfg_data && fields.mfg_data_len >= 2) {
           if (company == 465) match = true;
-          if (company == 76 && fields.mfg_data_len >= 3 && fields.mfg_data[2] == 0x06) match = true;
+          if (company == 76 && fields.mfg_data_len >= 3 &&
+              fields.mfg_data[2] == 0x06)
+            match = true;
         }
         if (svc == 0xFE24) match = true;
       }
@@ -299,6 +320,11 @@ int YaleBleLock::gapEvent(ble_gap_event* event, void* arg) {
     }
     case BLE_GAP_EVENT_CONNECT:
       if (event->connect.status == 0) {
+        // Record the handle here, not only via the event: waitFor(Connected)
+        // returns on the matching event before its inline handler runs, so
+        // relying on that would leave m_conn at 0xFFFF and every GATT call
+        // would fail with BLE_HS_ENOTCONN.
+        self->m_conn = event->connect.conn_handle;
         Ev ev{};
         ev.type = EvType::Connected;
         ev.status = event->connect.conn_handle;
@@ -312,6 +338,8 @@ int YaleBleLock::gapEvent(ble_gap_event* event, void* arg) {
       }
       break;
     case BLE_GAP_EVENT_DISCONNECT: {
+      self->m_conn = 0xFFFF;
+      self->m_lastDisconnectUs = esp_timer_get_time();
       Ev ev{};
       ev.type = EvType::Disconnected;
       ev.status = event->disconnect.reason;
@@ -376,17 +404,22 @@ int YaleBleLock::onChr(uint16_t conn, const ble_gatt_error* error,
     return 0;
   }
   if (error->status != 0 || !chr) return 0;
-  if (chr->uuid.u.type != BLE_UUID_TYPE_16) return 0;
-  const uint16_t v = chr->uuid.u16.value;
-  if (v == CHR_CMD_WRITE)
-    self->m_hWrite = chr->def_handle;
-  else if (v == CHR_CMD_NOTIFY) {
+  // The Yale characteristics are 128-bit (vendor base bd4ac6xx-…), so match
+  // with ble_uuid_cmp. All four use the value handle for reads/writes; the
+  // declaration handle bounds descriptor discovery.
+  if (ble_uuid_cmp(&chr->uuid.u, &UUID_CMD_WRITE.u) == 0) {
+    self->m_hWrite = chr->val_handle;
+    self->m_defWrite = chr->def_handle;
+  } else if (ble_uuid_cmp(&chr->uuid.u, &UUID_CMD_NOTIFY.u) == 0) {
     self->m_hRead = chr->val_handle;
+    self->m_defRead = chr->def_handle;
     self->m_readProps = chr->properties;
-  } else if (v == CHR_SEC_WRITE)
-    self->m_hSecWrite = chr->def_handle;
-  else if (v == CHR_SEC_NOTIFY) {
+  } else if (ble_uuid_cmp(&chr->uuid.u, &UUID_SEC_WRITE.u) == 0) {
+    self->m_hSecWrite = chr->val_handle;
+    self->m_defSecWrite = chr->def_handle;
+  } else if (ble_uuid_cmp(&chr->uuid.u, &UUID_SEC_NOTIFY.u) == 0) {
     self->m_hSecRead = chr->val_handle;
+    self->m_defSecRead = chr->def_handle;
     self->m_secReadProps = chr->properties;
   }
   return 0;
@@ -404,6 +437,9 @@ int YaleBleLock::onDsc(uint16_t conn, const ble_gatt_error* error,
     return 0;
   }
   if (error->status != 0 || !dsc) return 0;
+  ESP_LOGD(TAG, "dsc chr_val=%u handle=%u uuid16=%04x", chr_val_handle,
+           dsc->handle,
+           dsc->uuid.u.type == BLE_UUID_TYPE_16 ? dsc->uuid.u16.value : 0);
   if (dsc->uuid.u.type == BLE_UUID_TYPE_16 &&
       dsc->uuid.u16.value == 0x2902) {  // CCCD
     if (chr_val_handle == self->m_hRead)
@@ -435,7 +471,8 @@ bool YaleBleLock::ensureConnected() {
     const int64_t deadline = esp_timer_get_time() + 3000000;  // 3 s
     while (!m_synced && esp_timer_get_time() < deadline) {
       Ev ev{};
-      if (xQueueReceive(m_events, &ev, pdMS_TO_TICKS(50)) == pdTRUE && ev.type == EvType::Synced) {
+      if (xQueueReceive(m_events, &ev, pdMS_TO_TICKS(50)) == pdTRUE &&
+          ev.type == EvType::Synced) {
         m_synced = true;
       }
     }
@@ -448,7 +485,7 @@ bool YaleBleLock::ensureConnected() {
   // If we have a cached address, try a direct connect first.
   if (m_addrKnown) {
     if (connectDirect(DIRECT_CONNECT_MS)) {
-      if (discover() && handshake()) return true;
+      if (establishSession()) return true;
       disconnect();
       return false;
     }
@@ -458,15 +495,32 @@ bool YaleBleLock::ensureConnected() {
 
   // Scan for the lock.
   if (!scanAndConnect()) return false;
-  if (discover() && handshake()) return true;
+  if (establishSession()) return true;
   disconnect();
   return false;
+}
+
+// Discovery, then the session setup in the order yalexs-ble uses: enable the
+// secure-notify CCCD, run the handshake, then enable the command-notify CCCD.
+// The lock drops the link if the command channel is armed before the secure
+// channel is up.
+bool YaleBleLock::establishSession() {
+  if (!discover()) return false;
+  if (!writeCccd(m_hSecReadCccd, m_secReadProps, "secure")) return false;
+  if (!handshake()) return false;
+  if (!writeCccd(m_hReadCccd, m_readProps, "command")) return false;
+  m_sessionReady = true;
+  return true;
 }
 
 bool YaleBleLock::connectDirect(uint32_t timeoutMs) {
   ble_addr_t addr{};
   addr.type = m_peerAddrType;
-  std::memcpy(addr.val, m_mac.data(), 6);
+  // ble_addr_t.val is least-significant byte first (on-air order); m_mac is
+  // MSB-first, so reverse it. Getting this wrong connects to a non-existent
+  // address: the controller never gets a response, the connect times out and
+  // we cancel it (surfacing as status=9 / BLE_HS_EAPP).
+  for (int i = 0; i < 6; ++i) addr.val[i] = m_mac[5 - i];
 
   const ble_gap_conn_params params = {
       .scan_itvl = 0x0010,
@@ -540,7 +594,9 @@ bool YaleBleLock::scanAndConnect() {
   // generous backoff rather than hammering it.
   ble_addr_t addr{};
   addr.type = m_peerAddrType;
-  std::memcpy(addr.val, m_mac.data(), 6);
+  // ble_addr_t.val is least-significant byte first (on-air order); m_mac is
+  // MSB-first, so reverse it (see connectDirect).
+  for (int i = 0; i < 6; ++i) addr.val[i] = m_mac[5 - i];
   const ble_gap_conn_params params = {
       .scan_itvl = 0x0010,
       .scan_window = 0x0010,
@@ -580,33 +636,66 @@ bool YaleBleLock::discover() {
   svc_uuid.u.type = BLE_UUID_TYPE_16;
   svc_uuid.u16.value = SVC_YALE;
   int rc = ble_gattc_disc_svc_by_uuid(m_conn, &svc_uuid.u, onSvc, this);
-  if (rc != 0) return false;
+  if (rc != 0) {
+    ESP_LOGE(TAG, "disc_svc_by_uuid failed (rc=%d, conn=%u)", rc, m_conn);
+    return false;
+  }
   Ev ev{};
-  if (!waitFor(EvType::GattDone, GATT_MS, ev)) return false;
+  if (!waitFor(EvType::GattDone, GATT_MS, ev)) {
+    ESP_LOGE(TAG, "service discovery timed out");
+    return false;
+  }
   if (m_svcStart == 0) {
-    ESP_LOGE(TAG, "service 0xFE24 not found");
+    ESP_LOGE(TAG, "service 0xFE24 not found (status=%d)", ev.status);
     return false;
   }
 
   rc = ble_gattc_disc_all_chrs(m_conn, m_svcStart, m_svcEnd, onChr, this);
-  if (rc != 0) return false;
-  if (!waitFor(EvType::GattDone, GATT_MS, ev)) return false;
+  if (rc != 0) {
+    ESP_LOGE(TAG, "disc_all_chrs failed (rc=%d)", rc);
+    return false;
+  }
+  if (!waitFor(EvType::GattDone, GATT_MS, ev)) {
+    ESP_LOGE(TAG, "characteristic discovery timed out");
+    return false;
+  }
   if (m_hWrite == 0 || m_hRead == 0 || m_hSecWrite == 0 || m_hSecRead == 0) {
-    ESP_LOGE(TAG, "incomplete characteristic discovery");
+    ESP_LOGE(TAG, "incomplete characteristic discovery (w=%u r=%u sw=%u sr=%u)",
+             m_hWrite, m_hRead, m_hSecWrite, m_hSecRead);
     return false;
   }
 
   // CCCDs: both notify characteristics are INDICATE-only (props 0x20), so we
-  // must write 0x0002, not 0x0001.
-  rc = ble_gattc_disc_all_dscs(m_conn, m_hRead, m_hRead, onDsc, this);
-  if (rc != 0) return false;
-  if (!waitFor(EvType::GattDone, GATT_MS, ev)) return false;
-  rc = ble_gattc_disc_all_dscs(m_conn, m_hSecRead, m_hSecRead, onDsc, this);
-  if (rc != 0) return false;
-  if (!waitFor(EvType::GattDone, GATT_MS, ev)) return false;
-
-  if (!writeCccd(m_hReadCccd, m_readProps, "command")) return false;
-  if (!writeCccd(m_hSecReadCccd, m_secReadProps, "secure")) return false;
+  // must write 0x0002, not 0x0001. A descriptor range runs from the value
+  // handle to just before the next characteristic declaration; passing the
+  // value handle as both start and end yields an empty range and finds
+  // nothing. The command-notify CCCD sits before the secure-write
+  // declaration; the secure-notify CCCD is last, so it runs to the service
+  // end.
+  const uint16_t readEnd = m_defSecWrite ? m_defSecWrite - 1 : m_svcEnd;
+  rc = ble_gattc_disc_all_dscs(m_conn, m_hRead, readEnd, onDsc, this);
+  if (rc != 0) {
+    ESP_LOGE(TAG, "disc_all_dscs (command) failed (rc=%d)", rc);
+    return false;
+  }
+  if (!waitFor(EvType::GattDone, GATT_MS, ev)) {
+    ESP_LOGE(TAG, "command descriptor discovery timed out");
+    return false;
+  }
+  rc = ble_gattc_disc_all_dscs(m_conn, m_hSecRead, m_svcEnd, onDsc, this);
+  if (rc != 0) {
+    ESP_LOGE(TAG, "disc_all_dscs (secure) failed (rc=%d)", rc);
+    return false;
+  }
+  if (!waitFor(EvType::GattDone, GATT_MS, ev)) {
+    ESP_LOGE(TAG, "secure descriptor discovery timed out");
+    return false;
+  }
+  ESP_LOGI(TAG,
+           "gatt: svc %u-%u write=%u read=%u cccd=%u secWrite=%u secRead=%u "
+           "cccd=%u",
+           m_svcStart, m_svcEnd, m_hWrite, m_hRead, m_hReadCccd, m_hSecWrite,
+           m_hSecRead, m_hSecReadCccd);
 
   m_gattCached = true;
   saveCache();

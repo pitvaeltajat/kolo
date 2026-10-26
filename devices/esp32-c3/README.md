@@ -47,14 +47,14 @@ idf.py -p /dev/ttyACM0 flash monitor
 
 The console is the USB-Serial-JTAG port (`/dev/ttyACM0` on Linux). Commands:
 
-| Command                                                          | What                                            |
-| ---------------------------------------------------------------- | ----------------------------------------------- |
+| Command                                                          | What                                                                    |
+| ---------------------------------------------------------------- | ----------------------------------------------------------------------- |
 | `scan`                                                           | read lock/door/battery (scans for the lock if the direct connect fails) |
-| `status`                                                         | read lock/door/battery state                    |
-| `unlock` / `lock`                                                | drive the lock                                  |
-| `setkey <32-hex>` / `setmac <aa:bb:cc:dd:ee:ff>` / `setslot <n>` | provision credentials (persist in NVS)          |
-| `info`                                                           | show configured MAC/slot (key masked)           |
-| `forget`                                                         | clear the cached GATT handles (forces re-discovery) |
+| `status`                                                         | read lock/door/battery state                                            |
+| `unlock` / `lock`                                                | drive the lock                                                          |
+| `setkey <32-hex>` / `setmac <aa:bb:cc:dd:ee:ff>` / `setslot <n>` | provision credentials (persist in NVS)                                  |
+| `info`                                                           | show configured MAC/slot (key masked)                                   |
+| `forget`                                                         | clear the cached GATT handles (forces re-discovery)                     |
 
 ## Host unit tests
 
@@ -89,6 +89,7 @@ test/
 ## Status (Oct 2026)
 
 **Implemented — code complete, builds clean, host tests pass:**
+
 - **A — skeleton**: builds, boots, console on USB-Serial-JTAG.
 - **B — config + CLI**: credentials in NVS, console commands.
 - **C — BLE connect/discover**: NimBLE central, service `0xFE24`, GATT cache in NVS.
@@ -97,32 +98,47 @@ test/
 - **F — host verification**: `idf.py build` clean (~316 KB image, ~69 KB DRAM);
   crypto/frame unit tests pass.
 
-**Pending — hardware go/no-go** (FIRMWARE.md phase 2):
-- Flash the C3 supermini, provision the offline key/slot/MAC from
-  [`fetch_offline_key.py`](../yale/fetch_offline_key.py), run the 100-cycle
-  soak, measure latency/battery, confirm out-of-range fails cleanly. The GATT
-  cache must survive a reboot (second connect skips discovery).
+**Hardware bring-up (Oct 2026):**
 
-## Troubleshooting: "connect failed: status=9"
+- ✅ Flashed; credentials provisioned (MAC/slot/key in NVS).
+- ✅ Scan finds the lock; connect succeeds; GATT discovery finds service
+  `0xFE24` and all four characteristics; secure CCCD enabled.
+- ⏳ **Secure-channel handshake** — the `0x01` key exchange gets no response.
+  Next: fix the secure-notify CCCD handle (discovered at the service end, not
+  adjacent to the value handle), then re-test; if it still fails, verify the
+  offline key/slot.
+- ⏳ 100-cycle soak, latency/battery, out-of-range behaviour, GATT-cache reboot.
 
-`status=9` is `BLE_ERR_CONN_LIMIT` (and `status=13` is
-`BLE_ERR_CONN_REJ_RESOURCES`): the lock is a **single-connection device** and
-is already connected to something else. The Yale Connect bridge, the Yale Home
-app, and Apple Home all hold its one slot, and the lock drops idle links only
-after **~30 s**.
+See [`HANDOFF.md`](HANDOFF.md) for the full continuation notes.
 
-To free the slot:
+## Troubleshooting
 
-1. Unplug the Yale Connect bridge (and any other Yale hub).
-2. Close the Yale Home app and Apple Home / HomeKit on every phone/tablet.
-3. Wait **30–60 s** for the lock to drop the stale link.
-4. Run `status` again.
+### "connect failed: status=9"
 
-The firmware already retries (`YALE_CONNECT_ATTEMPTS`, default 5) with a
-generous backoff (`YALE_CONNECT_RETRY_BACKOFF_MS`, default 4000 ms) so it can
-catch a slot as it frees up, but it cannot force the lock to drop a live
-connection. If the lock stays busy after everything is disconnected, pull the
-lock's battery for a few seconds to reset its radio.
+`status=9` is **`BLE_HS_EAPP`**, which NimBLE reports when *we* cancel the
+connect after its duration expires — i.e. the lock never answered. It is **not**
+an HCI connection-limit code. The usual cause is connecting to the wrong
+address: `ble_addr_t.val` is least-significant byte first, so the configured
+MSB-first MAC must be reversed (`addr.val[i] = m_mac[5 - i]`). If you see the
+reversed MAC in the `peer_addr=` log line, that is the bug.
+
+### "key exchange rejected: offline key or slot is incorrect"
+
+The connect and GATT discovery succeeded, but the lock did not answer the
+secure-channel `0x01` exchange (or answered with something other than `0x02`).
+This is the error a wrong offline key or slot produces. Check `info`, and
+re-fetch the key with [`fetch_offline_key.py`](../yale/fetch_offline_key.py) if
+needed. A wrong **MAC** is different: the scan would not match the lock at all.
+
+### The lock is genuinely busy
+
+The lock is a single-connection device; the Yale Connect bridge, the Yale Home
+app, and Apple Home all compete for its one slot, and it drops idle links only
+after ~30 s. If connects time out while everything else is connected, unplug
+the bridge, close the apps, wait 30–60 s, and retry. The firmware retries
+(`YALE_CONNECT_ATTEMPTS`, default 5) with a backoff
+(`YALE_CONNECT_RETRY_BACKOFF_MS`, default 4000 ms), but it cannot force the
+lock to drop a live connection; pull the lock's battery to reset its radio.
 
 ## Security notes
 
