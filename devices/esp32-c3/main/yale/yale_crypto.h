@@ -35,8 +35,8 @@ constexpr uint8_t OFF_OPCODE = 0x01;
 constexpr uint8_t OFF_CHECKSUM = 0x03;  // 8-bit checksum
 constexpr uint8_t OFF_SUBTYPE = 0x04;
 constexpr uint8_t OFF_RESULT = 0x0F;  // result byte (0xBB frames)
-constexpr uint8_t OFF_CRC32 = 0x0C;   // 32-bit checksum (secure channel)
-constexpr uint8_t OFF_SLOT = 0x11;    // key slot (secure channel)
+constexpr uint8_t OFF_SEC_CHECKSUM = 0x0C;  // 32-bit security checksum (secure)
+constexpr uint8_t OFF_SLOT = 0x11;          // key slot (secure channel)
 
 // Opcodes.
 constexpr uint8_t OP_GETSTATUS = 0x02;
@@ -152,15 +152,25 @@ inline uint8_t simpleChecksum(const Frame& f) {
   return static_cast<uint8_t>(0 - sum);
 }
 
-// 32-bit checksum at OFF_CRC32 (secure channel): CRC32 of bytes 0..0x0B,
-// little-endian at 0x0C..0x0F.
-uint32_t crc32(const uint8_t* data, size_t len);
-inline void putCrc32(Frame& f) {
-  const uint32_t c = crc32(f.data(), OFF_CRC32);
-  f[OFF_CRC32] = static_cast<uint8_t>(c & 0xFF);
-  f[OFF_CRC32 + 1] = static_cast<uint8_t>((c >> 8) & 0xFF);
-  f[OFF_CRC32 + 2] = static_cast<uint8_t>((c >> 16) & 0xFF);
-  f[OFF_CRC32 + 3] = static_cast<uint8_t>((c >> 24) & 0xFF);
+// 32-bit "security checksum" at OFF_SEC_CHECKSUM (secure channel). yalexs-ble
+// (util._security_checksum) computes
+//   (0 - (int(buf[0x00:0x04]) + int(buf[0x04:0x08]) + int(buf[0x08:0x12]))) & 0xFFFFFFFF
+// over little-endian integers, stored little-endian at 0x0C. The high bytes of
+// the third term (0x0C..0x11) are multiples of 2^32 and vanish under the mask,
+// so it reduces to the negated sum of three little-endian 32-bit words over
+// bytes 0x00..0x0B. This is NOT a CRC.
+inline void putSecurityChecksum(Frame& f) {
+  auto word = [&f](size_t o) -> uint32_t {
+    return static_cast<uint32_t>(f[o]) |
+           (static_cast<uint32_t>(f[o + 1]) << 8) |
+           (static_cast<uint32_t>(f[o + 2]) << 16) |
+           (static_cast<uint32_t>(f[o + 3]) << 24);
+  };
+  const uint32_t c = 0u - (word(0x00) + word(0x04) + word(0x08));
+  f[OFF_SEC_CHECKSUM] = static_cast<uint8_t>(c & 0xFF);
+  f[OFF_SEC_CHECKSUM + 1] = static_cast<uint8_t>((c >> 8) & 0xFF);
+  f[OFF_SEC_CHECKSUM + 2] = static_cast<uint8_t>((c >> 16) & 0xFF);
+  f[OFF_SEC_CHECKSUM + 3] = static_cast<uint8_t>((c >> 24) & 0xFF);
 }
 
 // Build a command frame (header 0xEE) with the given opcode/subtype, compute
@@ -176,20 +186,24 @@ inline void buildCommand(Frame& f, uint8_t opcode, uint8_t subtype, Cbc& cbc) {
 }
 
 // Build a secure-channel frame (handshake): header 0x01/0x03, payload at
-// 0x04..0x0B, slot at 0x11, 32-bit checksum at 0x0C, then ECB-encrypt.
+// 0x04..0x0B, fixed 0x0F at 0x10, slot at 0x11, security checksum at 0x0C,
+// then ECB-encrypt the first 16 bytes (0x10/0x11 stay plaintext). Mirrors
+// yalexs-ble SecureSession.build_command + _write_checksum + _encrypt_command.
 inline void buildSecure(Frame& f, uint8_t opcode, const uint8_t payload8[8],
                         uint8_t slot, Ecb& ecb) {
   f.fill(0);
   f[OFF_HEADER] = opcode;
-  f[OFF_SLOT] = slot;
+  f[0x10] = 0x0F;      // fixed plaintext trailing byte (build_command)
+  f[OFF_SLOT] = slot;  // plaintext key slot (key_index)
   std::memcpy(f.data() + 0x04, payload8, 8);
-  putCrc32(f);
-  ecb.encrypt(f.data(), f.data());
+  putSecurityChecksum(f);
+  ecb.encrypt(f.data(), f.data());  // encrypts bytes 0x00..0x0F only
 }
 
-// Decrypt a received secure-channel frame in place.
+// Decrypt a received secure-channel frame in place (AES-ECB decrypt of the
+// first 16 bytes; 0x10/0x11 are plaintext).
 inline void decryptSecure(Frame& f, Ecb& ecb) {
-  ecb.encrypt(f.data(), f.data());
+  ecb.decrypt(f.data(), f.data());
 }
 
 // Decrypt a received command-channel frame in place.

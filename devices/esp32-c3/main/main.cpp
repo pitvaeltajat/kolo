@@ -19,7 +19,11 @@ extern "C" void app_main(void) {
   nvs_config::init();
 
   const auto creds = nvs_config::loadCreds();
-  YaleBleLock lock(creds);
+  // Static lifetime: app_main returns after setup, but the BLE worker task and
+  // the CLI keep using this object. A stack local would be destroyed on return
+  // — and ~YaleBleLock() zeroes the offline key, leaving the worker with a
+  // zero key (handshake fails). Static keeps it alive for the whole program.
+  static YaleBleLock lock(creds);
   lock.begin();
 
   cli::init(&lock);

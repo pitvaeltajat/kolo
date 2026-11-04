@@ -35,10 +35,23 @@ static void test_simple_checksum() {
   CHECK(yale::checksumOk(f));
 }
 
-static void test_crc32() {
-  // CRC-32 of "123456789" is 0xCBF43926.
-  const uint8_t data[] = "123456789";
-  CHECK(yale::crc32(data, 9) == 0xCBF43926u);
+static void test_security_checksum() {
+  // The whole frame (after the checksum is written) must sum to zero when read
+  // as three little-endian 32-bit words over bytes 0x00..0x0B plus the stored
+  // checksum word at 0x0C — i.e. word0+word1+word2+checksum == 0 (mod 2^32).
+  Frame f{};
+  f.fill(0);
+  f[0x00] = 0x01;
+  f[0x04] = 0x11;
+  f[0x08] = 0x22;
+  f[0x0B] = 0x33;
+  yale::putSecurityChecksum(f);
+  auto word = [&f](size_t o) -> uint32_t {
+    return static_cast<uint32_t>(f[o]) | (static_cast<uint32_t>(f[o + 1]) << 8) |
+           (static_cast<uint32_t>(f[o + 2]) << 16) |
+           (static_cast<uint32_t>(f[o + 3]) << 24);
+  };
+  CHECK((word(0x00) + word(0x04) + word(0x08) + word(0x0C)) == 0u);
 }
 
 static void test_cbc_chain() {
@@ -129,20 +142,23 @@ static void test_build_secure() {
   dec.setKey(key);
   dec.decrypt(f.data(), f.data());
   CHECK(f[0] == 0x01);
+  CHECK(f[0x10] == 0x0F);  // fixed plaintext trailing byte
   CHECK(f[yale::OFF_SLOT] == 3);
   CHECK(std::memcmp(f.data() + 0x04, payload, 8) == 0);
-  // CRC32 over bytes 0..0x0B must match the stored value.
-  const uint32_t stored =
-      static_cast<uint32_t>(f[yale::OFF_CRC32]) |
-      (static_cast<uint32_t>(f[yale::OFF_CRC32 + 1]) << 8) |
-      (static_cast<uint32_t>(f[yale::OFF_CRC32 + 2]) << 16) |
-      (static_cast<uint32_t>(f[yale::OFF_CRC32 + 3]) << 24);
-  CHECK(stored == yale::crc32(f.data(), yale::OFF_CRC32));
+  // Security checksum: the three words over 0x00..0x0B plus the stored word at
+  // 0x0C must sum to zero (mod 2^32).
+  auto word = [&f](size_t o) -> uint32_t {
+    return static_cast<uint32_t>(f[o]) | (static_cast<uint32_t>(f[o + 1]) << 8) |
+           (static_cast<uint32_t>(f[o + 2]) << 16) |
+           (static_cast<uint32_t>(f[o + 3]) << 24);
+  };
+  CHECK((word(0x00) + word(0x04) + word(0x08) + word(yale::OFF_SEC_CHECKSUM)) ==
+        0u);
 }
 
 int main() {
   test_simple_checksum();
-  test_crc32();
+  test_security_checksum();
   test_cbc_chain();
   test_ecb_roundtrip();
   test_build_command();

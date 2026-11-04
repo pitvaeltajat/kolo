@@ -442,9 +442,16 @@ int YaleBleLock::onDsc(uint16_t conn, const ble_gatt_error* error,
            dsc->uuid.u.type == BLE_UUID_TYPE_16 ? dsc->uuid.u16.value : 0);
   if (dsc->uuid.u.type == BLE_UUID_TYPE_16 &&
       dsc->uuid.u16.value == 0x2902) {  // CCCD
-    if (chr_val_handle == self->m_hRead)
+    // A characteristic's own CCCD is the FIRST 0x2902 after its value handle,
+    // before the next characteristic declaration. NimBLE reports every
+    // descriptor in the requested range with the same chr_val_handle we asked
+    // for, so an over-wide range (secRead..svcEnd) also surfaces the CCCDs of
+    // later characteristics (handles 29, 32 here). Keep the first match, not
+    // the last, or we enable indications on the wrong characteristic and the
+    // lock terminates the link.
+    if (chr_val_handle == self->m_hRead && self->m_hReadCccd == 0)
       self->m_hReadCccd = dsc->handle;
-    else if (chr_val_handle == self->m_hSecRead)
+    else if (chr_val_handle == self->m_hSecRead && self->m_hSecReadCccd == 0)
       self->m_hSecReadCccd = dsc->handle;
   }
   return 0;

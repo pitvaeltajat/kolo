@@ -104,11 +104,19 @@ void saveCreds(const YaleCreds& c) {
     ESP_LOGE(TAG, "nvs_open(creds) failed");
     return;
   }
-  nvs_set_blob(h, KEY_MAC, c.mac.data(), c.mac.size());
-  nvs_set_blob(h, KEY_KEY, c.key.data(), c.key.size());
-  nvs_set_u8(h, KEY_SLOT, c.slot);
-  nvs_commit(h);
+  esp_err_t rm = nvs_set_blob(h, KEY_MAC, c.mac.data(), c.mac.size());
+  esp_err_t rk = nvs_set_blob(h, KEY_KEY, c.key.data(), c.key.size());
+  esp_err_t rs = nvs_set_u8(h, KEY_SLOT, c.slot);
+  esp_err_t rc = nvs_commit(h);
   nvs_close(h);
+  // Don't claim success on a silent write failure (e.g. a type mismatch from
+  // an older layout): surface it instead of logging "saved".
+  if (rm != ESP_OK || rk != ESP_OK || rs != ESP_OK || rc != ESP_OK) {
+    ESP_LOGE(TAG, "saveCreds failed: mac=%s key=%s slot=%s commit=%s",
+             esp_err_to_name(rm), esp_err_to_name(rk), esp_err_to_name(rs),
+             esp_err_to_name(rc));
+    return;
+  }
   ESP_LOGI(TAG, "credentials saved");
 }
 

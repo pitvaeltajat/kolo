@@ -1,17 +1,21 @@
 # ESP32-C3 Yale firmware — handoff / continuation notes
 
-Last updated: 2026-10-26. Repo: `github.com:pitvaeltajat/kolo.git`.
+Last updated: 2026-11-04. Repo: `github.com:pitvaeltajat/kolo.git`.
 
 This file is the durable continuation base for the ESP32-C3 firmware work. It
-captures the current state, the blocker, and the exact next steps so work can
-resume without re-deriving context.
+captures the current state and the next steps so work can resume without
+re-deriving context.
 
 ## Where we are
 
-The firmware is **code-complete, builds clean, host tests pass, and is flashed
-to the board**. BLE connect + GATT discovery now work end-to-end against the
-real lock. The remaining failure is the **secure-channel handshake** (no
-response to the `0x01` key exchange) — see "Current state" below.
+**The full BLE path works end-to-end against the real lock**: scan → connect →
+GATT discovery → secure-channel handshake → command channel → `GETSTATUS`.
+`status` on the console returns live `lock status` / `door status` / `battery`.
+The secure handshake frame now matches the yalexs-ble reference byte-for-byte.
+
+Now developed/flashed on **macOS** (not WSL): board enumerates at
+`/dev/cu.usbmodem1101`; ESP-IDF v5.4 at `~/esp/esp-idf`; a pyserial venv drives
+`tools/esp_console.py`. The WSL/usbipd notes below are retained for that host.
 
 ## Hardware / environment
 
@@ -82,44 +86,60 @@ because we were connecting to the **wrong address** (see below). The earlier
    notifications first, then the handshake, then the command channel."* Added
    `establishSession()` doing secure CCCD → handshake → command CCCD.
 
-## Current state (end of session)
+## Bugs found and fixed 2026-11-04 (handshake now works)
 
-Discovery now works end-to-end: service `0xFE24` found (handles 16–32), all four
-characteristics found (`write=18 read=20 cccd=21 secWrite=23 secRead=25
-cccd=32`), secure CCCD enabled. **Remaining failure:** the handshake write to
-`att_handle=23` gets **no response** and times out after 10 s →
-`key exchange rejected: offline key or slot is incorrect`.
+The previous session stopped at a failing handshake. Four root causes, all now
+fixed and verified against the real lock:
 
-Two things to check next (in order):
+1. **Secure-notify CCCD discovered as handle 32, not 26** (`YaleBleLock.cpp`,
+   `onDsc`). The range `m_hSecRead..m_svcEnd` sweeps up the CCCDs of later
+   characteristics too, and NimBLE reports them all with the same
+   `chr_val_handle` we asked for, so last-wins landed on 32. Fixed: keep the
+   **first** `0x2902` per characteristic (`m_hReadCccd == 0` guard).
+2. **Secure checksum was CRC-32** (`yale_crypto.h`). The August/Yale secure
+   frame uses `(0 - (u32[0:4] + u32[4:8] + u32[8:18])) & 0xFFFFFFFF` LE at
+   `0x0C` (yalexs-ble `util._security_checksum`), which reduces to the negated
+   sum of three LE 32-bit words over bytes `0x00..0x0B`. Replaced
+   `putCrc32`/`crc32` with `putSecurityChecksum`. Also: byte `0x10` must be
+   `0x0F` (yalexs-ble `build_command`), and `decryptSecure` must AES-**decrypt**
+   (it was calling encrypt).
+3. **`setkey` didn't drop the RAM GATT cache** (`cli.cpp` → `clearCache`, now
+   public). `forget` only cleared NVS, so the live object kept stale handles.
+4. **Offline key read back as all-zeros** (`main.cpp`). `YaleBleLock lock` was a
+   stack local in `app_main`; `app_main` returns after setup, destroying it, and
+   `~YaleBleLock()` zeroes the offline key — while the BLE worker task keeps
+   using the object. MAC/handles survived in that memory so scan/connect/discover
+   worked; only the key was zero, so the handshake failed. Fixed with
+   `static YaleBleLock lock(creds)`. (`saveCreds` now also reports NVS write
+   failures instead of always logging "saved".)
 
-1. **The secure-notify CCCD handle looks wrong.** It was discovered at handle
-   **32** (the service end), not adjacent to the secure-notify value handle
-   (25). The reference bounds the secure-notify descriptor search by the next
-   characteristic declaration; we run it to `m_svcEnd`. Re-check the descriptor
-   layout with `ESP_LOG_LEVEL=DEBUG` on the `YaleBle` tag (the `dsc chr_val=…
-   handle=… uuid16=…` line) and fix the range so the CCCD lands at 26.
-2. **Then re-test the handshake.** If the CCCD handle is right and the write
-   still gets no reply, the offline key/slot may genuinely be wrong — that is
-   the error the handshake reports. Verify with `info` and re-fetch the key via
-   `devices/yale/fetch_offline_key.py` if needed.
+The on-wire `0x01` frame now matches the yalexs-ble reference byte-for-byte, and
+`status` returns `lock 0x03 / door 0x01 / battery ~5038 mV`.
+
+## Current state
+
+**Working end-to-end.** `status` → `secure session established` → live
+lock/door/battery. GATT cache + address persist across reboots (second connect
+skips the scan). Credentials in NVS: MAC `98:1b:b5:b9:cb:bd`, slot `2`, offline
+key (matches the 1Password item "Kolo Doorman L3 — BLE offline key"; a cloud
+re-fetch 2026-11-04 returned the same key, so it has **not** rotated).
 
 ## Next steps (in order)
 
-1. Fix the secure-notify CCCD range (see above) and confirm the handle.
-2. Re-run `status` on `/dev/ttyACM0`. Expect: connect → discover → handshake →
-   `GETSTATUS` returns lock/door/battery.
-3. If the handshake still fails, verify the offline key/slot (`info`, re-fetch).
-4. Then: `unlock` / `lock`, the 100-cycle soak (FIRMWARE.md phase 2), latency /
-   battery, out-of-range behaviour.
-5. Confirm the GATT cache survives a reboot (second connect skips discovery).
-6. Later phases: WiFi/MQTT/TLS, signed cmd/ack envelopes, `/api/state` +
+1. `unlock` / `lock` — exercise the command channel end-to-end (actuates the
+   real bolt; confirm with a human present). `status` already proves the
+   command channel works for reads.
+2. 100-cycle soak (FIRMWARE.md phase 2), latency / battery, out-of-range.
+3. Later phases: WiFi/MQTT/TLS, signed cmd/ack envelopes, `/api/state` +
    `/api/log` reporting (contract in `devices/README.md`, `lib/sign.ts`).
+
+Nice-to-have: `setkey`/`setslot` only take effect after a reboot (the live
+object loads creds once at boot). Add a method to re-load creds into the running
+`YaleBleLock` if runtime re-provisioning is wanted.
 
 ## Git
 
-- Branch `main`, pushed to `origin`. Latest: `979dd3d` (retry + backoff + README
-  troubleshooting + `idf-env.sh` / `usbipd-env.sh` / `tools/esp_console.py`).
-- Working tree clean after push.
+- Work done on branch `worktree-concurrent-exploring-treasure`.
 
 ## Key files
 

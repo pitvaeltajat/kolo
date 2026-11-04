@@ -71,6 +71,10 @@ class YaleBleLock {
   /** Called from the worker task when a command completes (ack or failure). */
   void setResultCallback(void (*cb)(const Result&, void*), void* arg);
 
+  /** Drop the cached GATT layout and address (RAM + NVS) so the next connect
+   * re-scans and re-discovers. */
+  void clearCache();
+
  private:
   static constexpr const char* TAG = "YaleBle";
   static constexpr size_t FRAME_LEN = yale::FRAME_LEN;
@@ -118,7 +122,6 @@ class YaleBleLock {
   void disconnect();
   void loadCache();
   void saveCache();
-  void clearCache();
   bool waitFor(EvType type, uint32_t timeoutMs, Ev& out);
   void cooldown();
   void reportResult(Cmd cmd, bool ok, uint8_t error, int64_t elapsedMs);

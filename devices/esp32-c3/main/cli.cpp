@@ -112,7 +112,7 @@ int cmd_info(int argc, char** argv) {
 }
 
 int cmd_forget(int argc, char** argv) {
-  nvs_config::clearGattCache();
+  if (g_lock) g_lock->clearCache();  // clears RAM + NVS; next connect re-scans
   std::printf("GATT cache cleared\n");
   return 0;
 }
