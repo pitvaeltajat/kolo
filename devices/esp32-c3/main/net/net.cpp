@@ -212,13 +212,20 @@ void handleCmd(const char* data, int len) {
 
 // Called from the BLE worker task when a command finishes.
 void onResult(const YaleBleLock::Result& r, void*) {
-  if (s_pendingAck && r.cmd == s_pendingCmd &&
-      (r.cmd == YaleBleLock::Cmd::Unlock || r.cmd == YaleBleLock::Cmd::Lock)) {
+  const bool isOp =
+      r.cmd == YaleBleLock::Cmd::Unlock || r.cmd == YaleBleLock::Cmd::Lock;
+  if (s_pendingAck && r.cmd == s_pendingCmd && isOp) {
     s_pendingAck = false;
     publishAck(s_pendingNonce, r.ok, r.ok ? nullptr : "lock rejected");
   }
-  // Any completed interaction left state() fresh — report it.
-  if (s_reportQ) {
+  if (isOp) {
+    // An unlock/lock does NOT refresh state() (the lock's result frame lands
+    // during the linger, after this callback). Reporting now would send the
+    // stale pre-command lock state. Instead read authoritative state (lock +
+    // door), and let that Status result post it below.
+    if (r.ok && s_lock) s_lock->request(YaleBleLock::Cmd::Status);
+  } else if (s_reportQ) {
+    // Status completed — state() is fresh, report it.
     uint8_t t = 1;
     xQueueSend(s_reportQ, &t, 0);
   }

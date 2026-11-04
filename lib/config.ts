@@ -48,7 +48,9 @@ export const SCHEDULE_DAYS = 7; // how far ahead to push periods to the Shellys
 // --- Timings ---------------------------------------------------------------
 
 export const COMMAND_SKEW_MS = 30_000; // ESP32 accepts commands within ±30 s
-export const ACK_TIMEOUT_MS = 5_000; // wait this long for the lock's ack
+export const ACK_TIMEOUT_MS = 15_000; // wait for the lock's ack; the ESP32 may
+// retry a BLE connect (up to ~2×5 s) when the Yale Connect bridge is holding
+// the lock's single slot, so this must exceed the device's worst-case retry.
 export const DEVICE_SILENT_MS = 30 * 60_000; // no report in 30 min → heartbeat alert
 
 export function clampSetpoint(c: number): number {

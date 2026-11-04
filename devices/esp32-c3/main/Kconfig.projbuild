@@ -30,14 +30,13 @@ config YALE_OFFLINE_KEY
 # --- Connection timing (mirrors the reference firmware's measured values) ---
 config YALE_DIRECT_CONNECT_MS
     int "Direct connect timeout (ms)"
-    default 10000
+    default 5000
     help
-        Timeout for a direct connect to the cached lock address. After our
-        own disconnect the lock is slow to advertise again, so this is the
-        long timeout; never scan right after our own disconnect. The lock
-        also refuses connections while the Yale Connect bridge (or the Yale
-        app / Apple Home) holds one, so a longer timeout rides out a brief
-        contention window.
+        Timeout for a direct connect to the cached lock address. A reachable
+        lock connects in under a second, so this only bounds the FAILURE wait.
+        It is kept short (5 s) so performCommand can retry (CMD_RETRY_ATTEMPTS)
+        within the app's ~15 s ack window when the Yale Connect bridge (or the
+        Yale app / Apple Home) is briefly holding the lock's single slot.
 
 config YALE_SCAN_MS
     int "Scan timeout (ms)"

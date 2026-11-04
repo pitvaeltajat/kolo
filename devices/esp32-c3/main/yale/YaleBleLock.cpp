@@ -70,6 +70,12 @@ constexpr uint32_t GATT_MS = 10000;
 constexpr uint32_t CMD_ACK_MS = 5000;
 // How long to wait for the lock's result (0xBB) after the ack.
 constexpr uint32_t CMD_RESULT_MS = 3000;
+// A user command (unlock/lock) retries this many times so one transient BLE
+// miss — e.g. the Yale Connect bridge briefly holding the lock's single slot —
+// doesn't surface to the app as a failure. With DIRECT_CONNECT_MS=5 s this
+// stays within the app's ~15 s ack window. Status reads are single-shot.
+constexpr int CMD_RETRY_ATTEMPTS = 2;
+constexpr uint32_t CMD_RETRY_BACKOFF_MS = 400;
 
 // The lock's address type is learned from a scan; until then we try public.
 constexpr uint8_t ADDR_TYPE_PUBLIC = 0;
@@ -857,68 +863,83 @@ void YaleBleLock::performCommand(Cmd cmd) {
   ESP_LOGI(TAG, "%s requested", cmdName(cmd));
   const int64_t t0 = esp_timer_get_time();
 
-  if (!ensureConnected()) {
-    ESP_LOGE(TAG, "%s failed: could not establish a session with the lock",
-             cmdName(cmd));
-    reportResult(cmd, false, 0, (esp_timer_get_time() - t0) / 1000);
-    return;
+  // Dedupe (unlock/lock): a repeat of the same op within DEDUPE_MS is coalesced.
+  if (cmd == Cmd::Unlock || cmd == Cmd::Lock) {
+    const int64_t now = esp_timer_get_time();
+    if (cmd == m_lastOwnOp &&
+        now - m_lastOwnOpUs < static_cast<int64_t>(DEDUPE_MS) * 1000) {
+      ESP_LOGI(TAG, "%s deduped", cmdName(cmd));
+      reportResult(cmd, true, 0, 0);
+      return;
+    }
   }
 
   Frame resp{};
   bool ok = false;
   uint8_t error = 0;
 
-  switch (cmd) {
-    case Cmd::Unlock:
-    case Cmd::Lock: {
-      // Dedupe: a repeat of the same command within DEDUPE_MS is coalesced.
-      const int64_t now = esp_timer_get_time();
-      if (cmd == m_lastOwnOp &&
-          now - m_lastOwnOpUs < static_cast<int64_t>(DEDUPE_MS) * 1000) {
-        ESP_LOGI(TAG, "%s deduped", cmdName(cmd));
-        reportResult(cmd, true, 0, 0);
-        return;
-      }
-      m_lastOwnOp = cmd;
-      m_lastOwnOpUs = now;
-
-      const uint8_t opcode = (cmd == Cmd::Unlock) ? OP_UNLOCK : OP_LOCK;
-      // Return on the ack (0xAA); the result (0xBB) arrives during the linger.
-      ok = sendCommand(opcode, 0, 0xAA, opcode, -1, CMD_ACK_MS, resp);
-      if (!ok) {
-        ESP_LOGE(TAG, "%s failed: no ack", cmdName(cmd));
-      }
-      break;
+  // Retry a user command so a single transient BLE miss doesn't fail it; Status
+  // stays single-shot. Each attempt re-connects (and re-discovers if needed).
+  const int attempts = (cmd == Cmd::Status) ? 1 : CMD_RETRY_ATTEMPTS;
+  for (int attempt = 1; attempt <= attempts && !ok; ++attempt) {
+    if (!ensureConnected()) {
+      ESP_LOGW(TAG, "%s: connect attempt %d/%d failed", cmdName(cmd), attempt,
+               attempts);
+      if (attempt < attempts) vTaskDelay(pdMS_TO_TICKS(CMD_RETRY_BACKOFF_MS));
+      continue;
     }
-    case Cmd::Status: {
-      // Read lock + door + battery.
-      ok = sendCommand(OP_GETSTATUS, SUB_LOCK, 0xBB, OP_GETSTATUS, SUB_LOCK,
-                       CMD_RESULT_MS, resp);
-      if (ok) {
-        m_state.lock = resp[0x08];
-        ESP_LOGI(TAG, "lock status: 0x%02x", m_state.lock);
+
+    switch (cmd) {
+      case Cmd::Unlock:
+      case Cmd::Lock: {
+        const uint8_t opcode = (cmd == Cmd::Unlock) ? OP_UNLOCK : OP_LOCK;
+        // Return on the ack (0xAA); the result (0xBB) arrives during the linger.
+        ok = sendCommand(opcode, 0, 0xAA, opcode, -1, CMD_ACK_MS, resp);
+        if (ok) {  // mark for dedupe only once the lock actually took it
+          m_lastOwnOp = cmd;
+          m_lastOwnOpUs = esp_timer_get_time();
+        }
+        break;
       }
-      if (ok) {
-        ok = sendCommand(OP_GETSTATUS, SUB_DOOR, 0xBB, OP_GETSTATUS, SUB_DOOR,
+      case Cmd::Status: {
+        // Read lock + door + battery.
+        ok = sendCommand(OP_GETSTATUS, SUB_LOCK, 0xBB, OP_GETSTATUS, SUB_LOCK,
                          CMD_RESULT_MS, resp);
         if (ok) {
-          m_state.door = resp[0x08];
-          ESP_LOGI(TAG, "door status: 0x%02x", m_state.door);
+          m_state.lock = resp[0x08];
+          ESP_LOGI(TAG, "lock status: 0x%02x", m_state.lock);
         }
-      }
-      if (ok) {
-        ok = sendCommand(OP_GETSTATUS, SUB_BATTERY, 0xBB, OP_GETSTATUS,
-                         SUB_BATTERY, CMD_RESULT_MS, resp);
         if (ok) {
-          m_state.batteryMv =
-              static_cast<uint16_t>(resp[0x08] | (resp[0x09] << 8));
-          ESP_LOGI(TAG, "battery: %u mV", (unsigned)m_state.batteryMv);
+          ok = sendCommand(OP_GETSTATUS, SUB_DOOR, 0xBB, OP_GETSTATUS, SUB_DOOR,
+                           CMD_RESULT_MS, resp);
+          if (ok) {
+            m_state.door = resp[0x08];
+            ESP_LOGI(TAG, "door status: 0x%02x", m_state.door);
+          }
         }
+        if (ok) {
+          ok = sendCommand(OP_GETSTATUS, SUB_BATTERY, 0xBB, OP_GETSTATUS,
+                           SUB_BATTERY, CMD_RESULT_MS, resp);
+          if (ok) {
+            m_state.batteryMv =
+                static_cast<uint16_t>(resp[0x08] | (resp[0x09] << 8));
+            ESP_LOGI(TAG, "battery: %u mV", (unsigned)m_state.batteryMv);
+          }
+        }
+        break;
       }
-      break;
+    }
+
+    if (!ok && attempt < attempts) {
+      ESP_LOGW(TAG, "%s: attempt %d/%d failed, retrying", cmdName(cmd), attempt,
+               attempts);
+      disconnect();  // drop the half-session so the retry reconnects clean
+      vTaskDelay(pdMS_TO_TICKS(CMD_RETRY_BACKOFF_MS));
     }
   }
 
+  if (!ok)
+    ESP_LOGE(TAG, "%s failed after %d attempt(s)", cmdName(cmd), attempts);
   reportResult(cmd, ok, error, (esp_timer_get_time() - t0) / 1000);
 
   // Linger: hold the session so a second command rides it.
