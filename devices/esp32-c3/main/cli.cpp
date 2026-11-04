@@ -8,6 +8,7 @@
 #include "esp_log.h"
 #include "esp_vfs_dev.h"
 #include "linenoise/linenoise.h"
+#include "net/net.hpp"
 #include "nvs_config.h"
 
 namespace {
@@ -117,13 +118,62 @@ int cmd_forget(int argc, char** argv) {
   return 0;
 }
 
+int cmd_setwifi(int argc, char** argv) {
+  if (argc < 3) {
+    std::printf("usage: setwifi <ssid> <password>\n");
+    return 1;
+  }
+  auto net = nvs_config::loadNet();
+  net.wifiSsid = argv[1];
+  net.wifiPass = argv[2];
+  nvs_config::saveNet(net);
+  std::printf("wifi saved (reboot to apply)\n");
+  return 0;
+}
+
+int cmd_setmqtt(int argc, char** argv) {
+  if (argc < 3) {
+    std::printf("usage: setmqtt <broker-host> <password>\n");
+    return 1;
+  }
+  auto net = nvs_config::loadNet();
+  net.mqttHost = argv[1];
+  net.mqttPass = argv[2];
+  nvs_config::saveNet(net);
+  std::printf("mqtt saved (reboot to apply)\n");
+  return 0;
+}
+
+int cmd_sethmac(int argc, char** argv) {
+  if (argc < 2) {
+    std::printf("usage: sethmac <device-hmac-key>\n");
+    return 1;
+  }
+  auto net = nvs_config::loadNet();
+  net.hmacKey = argv[1];
+  nvs_config::saveNet(net);
+  std::printf("hmac key saved (reboot to apply)\n");
+  return 0;
+}
+
+int cmd_net(int argc, char** argv) {
+  auto net = nvs_config::loadNet();
+  std::printf("ssid: %s\nmqtt host: %s\nmqtt pass: %s\nhmac: %s\n",
+              net.wifiSsid.empty() ? "(unset)" : net.wifiSsid.c_str(),
+              net.mqttHost.empty() ? "(unset)" : net.mqttHost.c_str(),
+              net.mqttPass.empty() ? "(unset)" : "(set, masked)",
+              net.hmacKey.empty() ? "(unset)" : "(set, masked)");
+  net::printStatus();
+  return 0;
+}
+
 }  // namespace
 
 namespace cli {
 
 void init(YaleBleLock* lock) {
   g_lock = lock;
-  if (g_lock) g_lock->setResultCallback(onResult, nullptr);
+  if (g_lock) g_lock->addResultCallback(onResult, nullptr);
 
   esp_console_repl_t* repl = nullptr;
   esp_console_repl_config_t repl_config = ESP_CONSOLE_REPL_CONFIG_DEFAULT();
@@ -180,6 +230,26 @@ void init(YaleBleLock* lock) {
   cmd.command = "forget";
   cmd.help = "clear the GATT cache";
   cmd.func = cmd_forget;
+  esp_console_cmd_register(&cmd);
+
+  cmd.command = "setwifi";
+  cmd.help = "set WiFi credentials: setwifi <ssid> <password>";
+  cmd.func = cmd_setwifi;
+  esp_console_cmd_register(&cmd);
+
+  cmd.command = "setmqtt";
+  cmd.help = "set MQTT broker: setmqtt <host> <password>";
+  cmd.func = cmd_setmqtt;
+  esp_console_cmd_register(&cmd);
+
+  cmd.command = "sethmac";
+  cmd.help = "set the DEVICE_HMAC_KEY shared with kolo";
+  cmd.func = cmd_sethmac;
+  esp_console_cmd_register(&cmd);
+
+  cmd.command = "net";
+  cmd.help = "show network config + link status";
+  cmd.func = cmd_net;
   esp_console_cmd_register(&cmd);
 
   ESP_ERROR_CHECK(esp_console_start_repl(repl));

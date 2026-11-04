@@ -1,0 +1,8 @@
+# Custom table for the 4 MB C3 supermini. The firmware grew past 1 MB once
+# WiFi + TLS + MQTT + HTTP were added, so the app partition is 2 MB. NVS stays
+# at 0x9000/0x6000 (the default offset) so the stored Yale credentials survive
+# the table change.
+# Name,   Type, SubType, Offset,   Size
+nvs,      data, nvs,     0x9000,   0x6000,
+phy_init, data, phy,     0xf000,   0x1000,
+factory,  app,  factory, 0x10000,  0x200000,

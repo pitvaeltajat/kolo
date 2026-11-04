@@ -16,10 +16,22 @@ namespace nvs_config {
 namespace {
 constexpr const char* NS_CREDS = "yale";
 constexpr const char* NS_GATT = "yaleble";
+constexpr const char* NS_NET = "kolonet";
 constexpr const char* KEY_MAC = "mac";
 constexpr const char* KEY_SLOT = "slot";
 constexpr const char* KEY_KEY = "key";
 constexpr const char* KEY_GATT = "gatt";
+
+// Read one NVS string into `out` (left unchanged if absent).
+void getStr(nvs_handle_t h, const char* key, std::string& out) {
+  size_t len = 0;
+  if (nvs_get_str(h, key, nullptr, &len) != ESP_OK || len == 0) return;
+  std::string buf(len, '\0');
+  if (nvs_get_str(h, key, buf.data(), &len) == ESP_OK) {
+    buf.resize(len > 0 ? len - 1 : 0);  // drop the NUL the API counts
+    out = std::move(buf);
+  }
+}
 }  // namespace
 
 void init() {
@@ -118,6 +130,40 @@ void saveCreds(const YaleCreds& c) {
     return;
   }
   ESP_LOGI(TAG, "credentials saved");
+}
+
+NetConfig loadNet() {
+  NetConfig c;
+  nvs_handle_t h;
+  if (nvs_open(NS_NET, NVS_READONLY, &h) == ESP_OK) {
+    getStr(h, "ssid", c.wifiSsid);
+    getStr(h, "wpass", c.wifiPass);
+    getStr(h, "mhost", c.mqttHost);
+    getStr(h, "mpass", c.mqttPass);
+    getStr(h, "hmac", c.hmacKey);
+    nvs_close(h);
+  }
+  return c;
+}
+
+void saveNet(const NetConfig& c) {
+  nvs_handle_t h;
+  if (nvs_open(NS_NET, NVS_READWRITE, &h) != ESP_OK) {
+    ESP_LOGE(TAG, "nvs_open(net) failed");
+    return;
+  }
+  esp_err_t r = ESP_OK;
+  r |= nvs_set_str(h, "ssid", c.wifiSsid.c_str());
+  r |= nvs_set_str(h, "wpass", c.wifiPass.c_str());
+  r |= nvs_set_str(h, "mhost", c.mqttHost.c_str());
+  r |= nvs_set_str(h, "mpass", c.mqttPass.c_str());
+  r |= nvs_set_str(h, "hmac", c.hmacKey.c_str());
+  r |= nvs_commit(h);
+  nvs_close(h);
+  if (r != ESP_OK)
+    ESP_LOGE(TAG, "saveNet: a write failed (0x%x)", (int)r);
+  else
+    ESP_LOGI(TAG, "net config saved");
 }
 
 GattCache loadGattCache() {

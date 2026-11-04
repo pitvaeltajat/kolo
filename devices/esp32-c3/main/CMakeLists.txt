@@ -5,9 +5,11 @@ idf_component_register(
         "cli.cpp"
         "yale/yale_crypto.cpp"
         "yale/YaleBleLock.cpp"
+        "net/net.cpp"
     INCLUDE_DIRS
         "."
         "yale"
+        "net"
     REQUIRES
         nvs_flash
         bt
@@ -16,6 +18,16 @@ idf_component_register(
         console
         vfs
         driver
+        esp_wifi
+        esp_event
+        esp_netif
+        esp-tls
+        mqtt
+        esp_http_client
+        json
+        lwip
+    EMBED_TXTFILES
+        "../../mqtt-ca.crt"
 )
 
 # Host-side unit tests for the protocol crypto (no ESP-IDF needed).

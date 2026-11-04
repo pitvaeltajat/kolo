@@ -20,6 +20,21 @@ struct YaleCreds {
   bool keyValid = false;
 };
 
+// Network / cloud-link settings (WiFi + MQTT + the HMAC key shared with the
+// kolo app). All secrets: never logged, masked by `info`. The MQTT username,
+// broker port, device id, kolo URL and CA cert are compile-time constants
+// (see net.cpp), not stored here.
+struct NetConfig {
+  std::string wifiSsid;
+  std::string wifiPass;
+  std::string mqttHost;  // broker hostname, e.g. mqtt.pitva.fi
+  std::string mqttPass;  // broker password (username is fixed "kolo")
+  std::string hmacKey;   // == kolo's DEVICE_HMAC_KEY
+  bool valid() const {
+    return !wifiSsid.empty() && !mqttHost.empty() && !hmacKey.empty();
+  }
+};
+
 // Cached BLE discovery results (the lock's GATT table is static).
 struct GattCache {
   bool valid = false;
@@ -44,6 +59,10 @@ YaleCreds loadCreds();
 
 // Persist credentials (all three at once).
 void saveCreds(const YaleCreds& c);
+
+// Load/persist the network settings (empty strings when unset).
+NetConfig loadNet();
+void saveNet(const NetConfig& c);
 
 // Load the GATT cache (valid=false if absent).
 GattCache loadGattCache();

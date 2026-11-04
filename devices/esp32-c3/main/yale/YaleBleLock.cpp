@@ -135,10 +135,10 @@ void YaleBleLock::request(Cmd cmd) {
   post(ev);
 }
 
-void YaleBleLock::setResultCallback(void (*cb)(const Result&, void*),
+void YaleBleLock::addResultCallback(void (*cb)(const Result&, void*),
                                     void* arg) {
-  m_resultCb = cb;
-  m_resultCbArg = arg;
+  if (m_resultCbCount < kMaxResultCbs)
+    m_resultCbs[m_resultCbCount++] = {cb, arg};
 }
 
 void YaleBleLock::post(const Ev& ev) {
@@ -959,10 +959,9 @@ void YaleBleLock::disconnect() {
 
 void YaleBleLock::reportResult(Cmd cmd, bool ok, uint8_t error,
                                int64_t elapsedMs) {
-  if (m_resultCb) {
-    Result r{cmd, ok, error, elapsedMs};
-    m_resultCb(r, m_resultCbArg);
-  }
+  Result r{cmd, ok, error, elapsedMs};
+  for (int i = 0; i < m_resultCbCount; ++i)
+    m_resultCbs[i].fn(r, m_resultCbs[i].arg);
 }
 
 // ------------------------------------------------------------------ cache

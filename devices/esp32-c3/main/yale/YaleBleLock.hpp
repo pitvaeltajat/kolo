@@ -68,8 +68,10 @@ class YaleBleLock {
     int64_t elapsedMs = 0;
   };
 
-  /** Called from the worker task when a command completes (ack or failure). */
-  void setResultCallback(void (*cb)(const Result&, void*), void* arg);
+  /** Register a callback invoked from the worker task when a command completes
+   * (ack or failure). Several consumers can register (e.g. the CLI and the
+   * cloud link); all are called, in registration order. */
+  void addResultCallback(void (*cb)(const Result&, void*), void* arg);
 
   /** Drop the cached GATT layout and address (RAM + NVS) so the next connect
    * re-scans and re-discovers. */
@@ -182,6 +184,11 @@ class YaleBleLock {
   yale::Cbc m_cbc{};
 
   State m_state{};
-  void (*m_resultCb)(const Result&, void*) = nullptr;
-  void* m_resultCbArg = nullptr;
+  static constexpr int kMaxResultCbs = 4;
+  struct ResultCb {
+    void (*fn)(const Result&, void*) = nullptr;
+    void* arg = nullptr;
+  };
+  ResultCb m_resultCbs[kMaxResultCbs]{};
+  int m_resultCbCount = 0;
 };

@@ -7,6 +7,7 @@
 
 #include "cli.h"
 #include "esp_log.h"
+#include "net/net.hpp"
 #include "nvs_config.h"
 #include "nvs_flash.h"
 #include "yale/YaleBleLock.hpp"
@@ -27,6 +28,7 @@ extern "C" void app_main(void) {
   lock.begin();
 
   cli::init(&lock);
+  net::start(&lock);  // WiFi/MQTT cloud link (no-op until configured)
 
   ESP_LOGI(TAG, "ready — console on USB-Serial-JTAG");
 }

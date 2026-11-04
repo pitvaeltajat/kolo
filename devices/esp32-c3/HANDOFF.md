@@ -17,6 +17,54 @@ Now developed/flashed on **macOS** (not WSL): board enumerates at
 `/dev/cu.usbmodem1101`; ESP-IDF v5.4 at `~/esp/esp-idf`; a pyserial venv drives
 `tools/esp_console.py`. The WSL/usbipd notes below are retained for that host.
 
+## WiFi / MQTT cloud link (2026-11-04, BLE done; WiFi association is the open bug)
+
+The `net/` module (`net.cpp`/`net.hpp`) implements the full device↔kolo contract
+(`devices/README.md`, mirrored from `devices/esp32/kolo-door.yaml`): WiFi STA +
+SNTP + MQTT(TLS, private CA) + signed `kolo/door/cmd` → verify (HMAC + ±30 s +
+nonce) → actuate via `YaleBleLock` → signed `kolo/door/ack`, plus signed HTTPS
+POST `/api/state`. Config is in NVS via new CLI setters (`setwifi`, `setmqtt`,
+`sethmac`, `net`); the result callback is now a fan-out (`addResultCallback`) so
+the CLI and net layer both see command results.
+
+**Build/flash changes:** firmware grew past 1 MB, so `partitions.csv` gives a
+2 MB app on 4 MB flash (`CONFIG_PARTITION_TABLE_CUSTOM`, `FLASHSIZE_4MB`); NVS
+kept at 0x9000 so creds survive. `sdkconfig.defaults` adds
+`ESP_COEX_SW_COEXIST_ENABLE` (WiFi+BLE share the radio) and the mbedTLS cert
+bundle (public CA for `kolo.pitva.fi`). The broker CA is embedded from
+`../../mqtt-ca.crt` (verified to match the live broker's CA, sha256
+`C6:12:23:...:5D:32`).
+
+**Infra provisioned this session (all consistent):**
+- Broker: Mosquitto in Docker on Lightsail `pitva-debian-13` (13.51.186.114),
+  container `kolo-mosquitto`, config at `/etc/kolo-mosquitto/config`. Host/CN
+  **`mqtt.pitva.fi`**:8883, user `kolo`, `allow_anonymous false`. SSH via
+  `aws lightsail get-instance-access-details` (user `admin`, needs
+  `aws sso login --sso-session pitva`).
+- **Secrets were ROTATED** (the old MQTT password was unrecoverable): new
+  `MQTT_PASSWORD` set on the broker (`mosquitto_passwd`) + device NVS + Vercel
+  env; new `DEVICE_HMAC_KEY` set on device NVS + Vercel env. kolo **redeployed**
+  to production (aliased `kolo.pitva.fi`) so the app uses the new values.
+- Device provisioned: `ssid`=this Mac's WiFi, `mqtt host`=mqtt.pitva.fi, mqtt
+  pass + hmac set (all in NVS, `net` confirms).
+
+**OPEN BUG — WiFi STA never associates.** Boot log shows WiFi inits, coexistence
+firmware loads, `net: wifi starting, ssid=...`, then **nothing for 15 s** — no
+scan, no `STA_CONNECTED`/`STA_DISCONNECTED`, no reason. So the initial
+`esp_wifi_connect()` from the `STA_START` handler isn't progressing. Added
+logging (STA_START connect rc, DISCONNECTED reason) — **next session: flash,
+`net/capture_boot.py`-style boot capture, read the rc/reason.** Likely suspects
+in order: (1) STA_START fires before our handler is wired / connect rc is an
+error → the log now shows it; (2) WiFi+BLE coexistence not actually arbitrating
+(NimBLE inited first) — try `esp_coex_preference_set(ESP_COEX_PREFER_BALANCE)`
+or init WiFi before BLE; (3) wrong SSID/password (SSID auto-grabbed from the Mac
+via `ipconfig getsummary en0`; password user-provided). The rest of the chain
+(MQTT/TLS/sign/ack/state) is untested because it's gated on WiFi being up.
+
+Capture a fresh boot on macOS with:
+`<venv>/python scratchpad/capture_boot.py /dev/cu.usbmodem1101 16` (it pulses
+RTS to reset the C3, then reads) — or on a host with `idf.py monitor`.
+
 ## Hardware / environment
 
 - **Board**: ESP32-C3 supermini, flashed via USB-Serial-JTAG.
