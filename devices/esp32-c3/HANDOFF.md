@@ -180,19 +180,27 @@ The on-wire `0x01` frame now matches the yalexs-ble reference byte-for-byte, and
 ## Current state
 
 **Working end-to-end.** `status` → `secure session established` → live
-lock/door/battery. GATT cache + address persist across reboots (second connect
-skips the scan). Credentials in NVS: MAC `98:1b:b5:b9:cb:bd`, slot `2`, offline
-key (matches the 1Password item "Kolo Doorman L3 — BLE offline key"; a cloud
-re-fetch 2026-11-04 returned the same key, so it has **not** rotated).
+lock/door/battery, and `unlock`/`lock` actuate the real bolt (commit `1017be6`
+tracks accurate state after each and retries transient BLE misses). The cloud
+link is live too: a signed `kolo/door/cmd` from the web app drives the lock and
+returns a signed ack + `/api/state` POST. GATT cache + address persist across
+reboots (second connect skips the scan). Credentials in NVS: MAC
+`98:1b:b5:b9:cb:bd`, slot `2`, offline key (matches the 1Password item "Kolo
+Doorman L3 — BLE offline key"; a cloud re-fetch 2026-11-04 returned the same key,
+so it has **not** rotated).
 
 ## Next steps (in order)
 
-1. `unlock` / `lock` — exercise the command channel end-to-end (actuates the
-   real bolt; confirm with a human present). `status` already proves the
-   command channel works for reads.
-2. 100-cycle soak (FIRMWARE.md phase 2), latency / battery, out-of-range.
-3. Later phases: WiFi/MQTT/TLS, signed cmd/ack envelopes, `/api/state` +
-   `/api/log` reporting (contract in `devices/README.md`, `lib/sign.ts`).
+Phases 1–3 are done (BLE drive + cloud link verified end-to-end). Remaining:
+
+1. **100-cycle soak** (FIRMWARE.md phase 2): latency / battery over a week,
+   out-of-range behaviour, GATT-cache reboot.
+2. **Harden the connect-vs-timeout race** (see the rough-edge note above):
+   raise the app's `ACK_TIMEOUT_MS` and/or retry the BLE connect once inside the
+   window so a bridge-held slot doesn't surface as a web-app "lock rejected".
+3. **Phase 4 (tags):** `/api/log` queue flushing, allowlist push, NTAG 424
+   read/enrol (crypto already written + host-tested in `devices/esp32/`), OTA,
+   and flash encryption + secure boot before any outdoor deployment.
 
 Nice-to-have: `setkey`/`setslot` only take effect after a reboot (the live
 object loads creds once at boot). Add a method to re-load creds into the running
@@ -200,7 +208,9 @@ object loads creds once at boot). Add a method to re-load creds into the running
 
 ## Git
 
-- Work done on branch `worktree-concurrent-exploring-treasure`.
+- Firmware work lands on short-lived `worktree-*` branches and is pushed to
+  `main` (`github.com:pitvaeltajat/kolo.git`); see the `firmware(c3):` and
+  `docs(c3):` commits for the history.
 
 ## Key files
 

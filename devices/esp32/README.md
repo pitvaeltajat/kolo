@@ -1,11 +1,13 @@
 # Door controller (ESP32-C6, ESPHome alternative) — build notes
 
-> **Status (Oct 2026).** The active phase-2 spike is the native ESP-IDF
-> firmware in [`../esp32-c3/`](../esp32-c3/README.md) — a from-scratch Yale
-> BLE driver + serial CLI on the ESP32-C3 supermini. This ESPHome directory
-> stays as the alternative integration path: it was written before the C3
-> spike existed, is **prep** (not validated on hardware), and needs the
-> community Yale component pinned to a commit before it can build.
+> **Status (Nov 2026).** The chosen firmware is the native ESP-IDF one in
+> [`../esp32-c3/`](../esp32-c3/README.md) — it passed the BLE go/no-go, drives
+> the real lock, and already carries the cloud link. This ESPHome directory is
+> now the **unused fallback**: written before the C3 firmware existed, it is
+> **prep** (not validated on hardware) and would need the community Yale
+> component pinned to a commit before it could build. It is kept only as a
+> second route if the C3 path ever needs one, and for the NTAG 424 SUN crypto
+> below (which is route-independent and already host-tested).
 
 Implements the door side of the kolo contract (devices/README.md). This is the
 hardware-dependent part and follows PLAN.md's phase order — it is **prep**, not

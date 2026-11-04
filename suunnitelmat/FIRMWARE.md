@@ -1,15 +1,15 @@
-# ESP32 firmware — C3 spike first, fork as fallback
+# ESP32 firmware — C3 is the chosen path, fork as reference
 
-> **Update (Oct 2026).** For the phase-2 go/no-go spike we're writing a
-> **from-scratch ESP-IDF firmware for the ESP32-C3 supermini** instead —
-> [`devices/esp32-c3/`](../devices/esp32-c3/README.md): BLE driver + serial
-> CLI, no HomeKit/web UI. Same Yale BLE protocol, implemented to the same wire
-> format, with [the fork](#the-fork) as the protocol reference. The C3 board is
-> what's on hand; the fork's C6/HomeKit/web-UI surface is unrelated weight for
-> proving the Doorman L3. If the C3 driver passes the go/no-go, grow it into
-> the full controller; otherwise fall back to this fork plan. The fork below
-> remains the reference for the production feature set (Home Key, split
-> reader, MQTT, web UI).
+> **Update (Nov 2026).** We wrote a **from-scratch ESP-IDF firmware for the
+> ESP32-C3 supermini** — [`devices/esp32-c3/`](../devices/esp32-c3/README.md):
+> BLE driver + serial CLI + the kolo cloud link, no HomeKit/web UI. Same Yale
+> BLE protocol, implemented to the same wire format, with [the fork](#the-fork)
+> as the protocol reference. **It passed the go/no-go** (drives the real
+> Doorman L3) and has since grown the integration — signed MQTT cmd/ack and
+> `/api/state` reporting work end-to-end (`net/`). So the C3 is the controller;
+> the fork and ESPHome plans below stay only as references/fallbacks for the
+> parts still unbuilt (the NTAG 424 reader). The C3 board is what's on hand; the
+> fork's C6/HomeKit/web-UI surface was unrelated weight.
 
 ## The fork
 
@@ -74,19 +74,21 @@ drilling for the cable is a problem.
 3. **Allowlist cache in NVS** — UID → member id, replaced on each Vercel push;
    tags keep working offline with the last list.
 
-## Sequencing — why no integration code is written yet
+## Sequencing — where we are
 
-The BLE protocol is generic Yale Access, but it is **unverified on the Doorman
-L3** (the fork targets a Yale **nexTouch**, US mortise). Writing the three
-additions before confirming a BLE driver drives the L3 is building on sand.
-Order (matches PLAN.md phases):
+The BLE protocol is generic Yale Access and was **unverified on the Doorman L3**
+(the fork targets a Yale **nexTouch**, US mortise), so nothing was built on top
+of it until a driver was proven. That gate is now cleared. Order (matches
+PLAN.md phases):
 
-1. **Phase 1 — offline key.** Dedicated Yale owner account → fetch key/slot/MAC
-   ([`devices/yale/fetch_offline_key.py`](../devices/yale/fetch_offline_key.py)).
-2. **Phase 2 — flash the C3 spike, prove lock/unlock on the L3** from the
-   indoor spot, 100 cycles, latency, battery. Go/no-go.
-3. Only then: write additions #1–#3 above — on the C3 firmware if it passed,
-   on the fork if not.
+1. ✅ **Phase 1 — offline key.** Fetched via
+   [`devices/yale/fetch_offline_key.py`](../devices/yale/fetch_offline_key.py).
+2. ✅ **Phase 2 — C3 spike proves lock/unlock on the L3** from the indoor spot.
+   Go/no-go passed. (100-cycle soak + latency/battery still to run.)
+3. ✅ **Phase 3 — integration** on the C3: additions #2 (signed MQTT unlock) and
+   the ack/state reporting are live and verified end-to-end (`net/`).
+   Addition #1 (NTAG 424) and #3 (allowlist push) remain — phase 4, hardware-gated;
+   the SUN crypto is already written and host-tested (`devices/esp32/`).
 
 ## Build
 

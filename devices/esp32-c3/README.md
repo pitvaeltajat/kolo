@@ -1,11 +1,13 @@
 # kolo door firmware — ESP32-C3 supermini + Yale Doorman L3 over BLE
 
-Phase-1 spike: an ESP-IDF (NimBLE) firmware for the **ESP32-C3 supermini** that
-drives the Yale lock directly over BLE using its **offline key + slot + MAC** —
-no Yale cloud, no hub. This phase is the go/no-go from
-[`suunnitelmat/FIRMWARE.md`](../../suunnitelmat/FIRMWARE.md): prove the lock can
-be driven from the indoor spot before any kolo integration (MQTT, signed
-commands, state reporting) is written.
+An ESP-IDF (NimBLE) firmware for the **ESP32-C3 supermini** that drives the Yale
+lock directly over BLE using its **offline key + slot + MAC** — no Yale cloud, no
+hub. Written for the go/no-go from
+[`suunnitelmat/FIRMWARE.md`](../../suunnitelmat/FIRMWARE.md) (prove the lock can
+be driven from the indoor spot), it **passed** and has since grown the kolo cloud
+link (`net/`): WiFi + MQTT(TLS) + signed command/ack + signed `/api/state`
+reporting, verified end-to-end against the live broker and web app. See
+[`HANDOFF.md`](HANDOFF.md).
 
 The BLE protocol is a from-scratch C++ port for ESP-IDF/NimBLE, using
 [`marcusadolfsson/apple-homekey-yale`](https://github.com/marcusadolfsson/apple-homekey-yale)
@@ -24,8 +26,8 @@ that code; we implement the same protocol against the C3.
   usable SRAM, BLE 5.0, native USB (USB-Serial-JTAG) console, onboard LED on
   GPIO8, boot button on GPIO9.
 - **Yale Doorman L3** (`Etuovi`): speaks the generic Yale/August Access BLE
-  protocol (service `0xFE24`). Unverified on the L3 — that is exactly what this
-  phase proves.
+  protocol (service `0xFE24`) — now confirmed driveable from this firmware
+  (lock/unlock/status), which is exactly what the go/no-go set out to prove.
 
 ## Credentials
 
@@ -55,6 +57,9 @@ The console is the USB-Serial-JTAG port (`/dev/ttyACM0` on Linux). Commands:
 | `setkey <32-hex>` / `setmac <aa:bb:cc:dd:ee:ff>` / `setslot <n>` | provision credentials (persist in NVS)                                  |
 | `info`                                                           | show configured MAC/slot (key masked)                                   |
 | `forget`                                                         | clear the cached GATT handles (forces re-discovery)                     |
+| `setwifi <ssid\|hex:AABB..> <pass>`                              | WiFi credentials; the console strips non-ASCII, so pass a UTF-8 SSID as `hex:<bytes>` (`python3 -c "print('SSID'.encode().hex())"`) |
+| `setmqtt <broker-host> <pass>` / `sethmac <key>`                 | MQTT broker + device HMAC key for the cloud link                        |
+| `net`                                                            | show cloud-link config + WiFi/MQTT connection state                     |
 
 ## Host unit tests
 
@@ -75,41 +80,41 @@ cmake --build test/build-test
 main/
   CMakeLists.txt
   Kconfig.projbuild      # YALE_* config + timing knobs
-  main.cpp               # app_main: NVS, config, CLI, YaleBleLock
+  main.cpp               # app_main: NVS, config, CLI, YaleBleLock, net
   nvs_config.*           # credentials + GATT cache in NVS
   cli.*                  # serial console
   yale/
     YaleBleLock.*        # BLE driver: worker task, NimBLE callbacks, connect/discover/handshake/commands
     yale_crypto.*        # AES-128-ECB/CBC, 18-byte frames, checksums (host-testable)
+  net/
+    net.*                # WiFi + SNTP + MQTT(TLS) + signed cmd/ack + /api/state POST
 test/
   test_crypto.cpp        # host-side unit tests for yale_crypto
   CMakeLists.txt         # host test build (builds mbedTLS from ESP-IDF source)
 ```
 
-## Status (Oct 2026)
+## Status (Nov 2026)
 
-**Implemented — code complete, builds clean, host tests pass:**
+**Working end-to-end against the real lock.** The full BLE path and the cloud
+link are both verified:
 
-- **A — skeleton**: builds, boots, console on USB-Serial-JTAG.
-- **B — config + CLI**: credentials in NVS, console commands.
-- **C — BLE connect/discover**: NimBLE central, service `0xFE24`, GATT cache in NVS.
-- **D — secure + command channels**: handshake, unlock/lock/status.
-- **E — state tracking**: lock/door/battery from commands + reads.
-- **F — host verification**: `idf.py build` clean (~316 KB image, ~69 KB DRAM);
-  crypto/frame unit tests pass.
+- **BLE (go/no-go passed)**: scan → connect → GATT discovery (`0xFE24`, all four
+  128-bit characteristics) → secure-channel handshake → command channel.
+  `status` returns live lock/door/battery; `unlock`/`lock` actuate the bolt.
+  GATT cache + address persist across reboots (second connect skips the scan).
+  The on-wire `0x01` secure frame matches the yalexs-ble reference byte-for-byte.
+- **Cloud link (`net/`)**: WiFi STA + SNTP + MQTT(TLS, private CA) +
+  signed `kolo/door/cmd` → verify (HMAC + ±30 s + nonce) → actuate → signed
+  `kolo/door/ack`, plus signed HTTPS POST `/api/state`. A signed unlock driven
+  from the web app was confirmed: `cmd → verify → actuate → ack → state (200)`.
+- **Host verification**: `idf.py build` clean (now a 2 MB app on 4 MB flash, see
+  `partitions.csv`); crypto/frame unit tests pass.
 
-**Hardware bring-up (Oct 2026):**
-
-- ✅ Flashed; credentials provisioned (MAC/slot/key in NVS).
-- ✅ Scan finds the lock; connect succeeds; GATT discovery finds service
-  `0xFE24` and all four characteristics; secure CCCD enabled.
-- ⏳ **Secure-channel handshake** — the `0x01` key exchange gets no response.
-  Next: fix the secure-notify CCCD handle (discovered at the service end, not
-  adjacent to the value handle), then re-test; if it still fails, verify the
-  offline key/slot.
-- ⏳ 100-cycle soak, latency/battery, out-of-range behaviour, GATT-cache reboot.
-
-See [`HANDOFF.md`](HANDOFF.md) for the full continuation notes.
+**Still to do:** 100-cycle soak, latency/battery over a week, out-of-range
+behaviour. One known rough edge: a BLE connect can take up to 10 s when the Yale
+Connect bridge holds the lock's single slot, and the app waits only 5 s
+(`ACK_TIMEOUT_MS`) — so an occasional "lock rejected" that a retry clears. See
+[`HANDOFF.md`](HANDOFF.md) for the full continuation notes and the fix options.
 
 ## Troubleshooting
 
@@ -147,9 +152,12 @@ lock to drop a live connection; pull the lock's battery to reset its radio.
   NVS. Enable it before any deployment (PLAN.md).
 - The serial console is unauthenticated (USB only). Fine for a bench spike.
 
-## Out of scope (later phases)
+## Done here vs. out of scope
 
-WiFi/MQTT/TLS, signed command/ack envelopes, `/api/state` + `/api/log`
-reporting, allowlist, NTAG 424, OTA, flash encryption. The signing contract
-these will implement is in [`devices/README.md`](../README.md) and
-[`lib/sign.ts`](../../lib/sign.ts).
+Done: BLE drive of the lock, and the cloud link — WiFi/MQTT/TLS, signed
+command/ack envelopes, `/api/state` POST (`net/`, to the contract in
+[`devices/README.md`](../README.md) / [`lib/sign.ts`](../../lib/sign.ts)).
+
+Still out of scope (later phases): `/api/log` queue flushing, allowlist push,
+NTAG 424 tag read/enrol, OTA, and **flash encryption + secure boot** (required
+before any outdoor deployment — the offline key and HMAC key live in flash).

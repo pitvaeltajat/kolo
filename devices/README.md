@@ -2,9 +2,11 @@
 
 The on-site device configuration/scripts that talk to the kolo Vercel app.
 Shellys use their normal stock firmware; the optional mJS file below is an
-application script, not replacement firmware. Written **in advance** of the
-hardware so the contract is pinned and phases 1→ can start the day the parts
-arrive. Nothing here is on the wall yet.
+application script, not replacement firmware. The **door** controller firmware
+(`esp32-c3/`) is built and proven against the real lock on the bench, talking to
+the live broker; the **heating** Shelly side is still prep, written in advance so
+the contract is pinned for the day the parts arrive. Nothing is permanently
+mounted on the wall yet.
 
 ```mermaid
 flowchart TB
@@ -84,11 +86,13 @@ username `kolo`, the shared password, and `mqtt-ca.crt` as its trusted CA.
   upstairs Shelly 1 Gen4 units. It is not needed to make the Pro 3 channels
   independent; stock firmware already exposes O1/O2/O3 separately.
 - `yale/fetch_offline_key.py` — fetch the lock's BLE offline key/slot/MAC (phase 1 door).
-- `esp32-c3/` — native ESP-IDF firmware for the door controller's BLE spike
-  (phase-2 go/no-go: from-scratch Yale BLE driver + serial CLI on the
-  ESP32-C3 supermini).
+- `esp32-c3/` — native ESP-IDF firmware for the door controller (from-scratch
+  Yale BLE driver + serial CLI + the cloud link in `net/`) on the ESP32-C3
+  supermini. Passed the phase-2 go/no-go and drives the real lock; the signed
+  MQTT cmd/ack + `/api/state` path is verified end-to-end. **This is the
+  active firmware.**
 - `esp32/` — ESPHome config + crypto helper, the alternative door-controller
-  path (prep only; see its README).
+  path (prep only, unused fallback; see its README).
 
 Phases follow the plans: [../suunnitelmat/PLAN.md](../suunnitelmat/PLAN.md) (door),
 [../suunnitelmat/HEATING.md](../suunnitelmat/HEATING.md) (heating).

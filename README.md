@@ -3,9 +3,10 @@
 `kolo.pitva.fi` — the Vercel web app that controls the PitVa kolo **front door**
 and **electric heating**. It is the "policy, logs and UI" layer the two plans in
 [`suunnitelmat/`](suunnitelmat/) describe ([PLAN.md](suunnitelmat/PLAN.md) door,
-[HEATING.md](suunnitelmat/HEATING.md) heating); the devices and firmware
-(ESP32 + PN532 reader, heating Shellys, MQTT broker) are separate and mostly
-not built yet.
+[HEATING.md](suunnitelmat/HEATING.md) heating). The door controller firmware
+([`devices/esp32-c3/`](devices/esp32-c3/README.md)) and the MQTT broker are
+built and verified end-to-end against the real lock; the NTAG 424 tag reader
+and the heating Shellys are still to come.
 
 Sign-in is the shared `atk.pitva.fi` Google login (same cookie as klapi/budu).
 **Authorisation is Google Group membership** — a member of `ACCESS_GROUP` can
@@ -21,7 +22,7 @@ flowchart LR
     E -->|"BLE"| Y["Yale lock"]
     E -->|"events POSTed back<br/>signed"| K
     T["tag"] -->|"offline allowlist"| E
-    S["slider / Google Calendar"] -->|"plan"| K
+    S["admin setpoint · 3 h boost · Google Calendar"] -->|"plan"| K
     K -->|"setpoint/schedule<br/>signed"| MQTT
     MQTT -->|"signed"| SH["Shelly ×3"]
     SH -->|"heat"| H["heaters"]
@@ -37,7 +38,7 @@ with timestamp-skew and single-use-nonce replay protection.
 |---|---|
 | `POST /api/unlock` · `/api/lock` | member → signed command → wait for ack → log |
 | `GET /api/status` | last door state (locked / open / battery) |
-| `GET /api/heating` · `POST /api/heating/setpoint` | setpoint + room temps; slider override |
+| `GET /api/heating` · `POST /api/heating/setpoint` · `/api/heating/boost` | room temps + plan; admin per-area setpoint; any member starts a 3 h boost |
 | `POST /api/state` · `/api/log` | device reports state / door events (signed) |
 | `GET/POST/DELETE /api/tags…` · `POST /api/tags/enroll` | tag admin + on-reader enrol |
 | `POST /api/allowlist` | push the signed tag allowlist to the reader |
@@ -58,7 +59,11 @@ configured" instead of pretending to work — nothing fakes a successful unlock.
 
 ## Status
 
-The web app is complete; the on-site hardware is the next step, in the phase
-order the plans lay out (offline key → ESP32 BLE spike → reader; one Shelly +
-sensor → the rest → calendar). The signing contract here is what the firmware
-and Shelly scripts implement against.
+The web app is complete. The **door** path is working end-to-end (Nov 2026): an
+ESP32-C3 drives the Yale lock over BLE, and a signed unlock from this app travels
+`web → signed MQTT → device → lock → ack + state`, all verified. Remaining there:
+the NTAG 424 tag reader hardware and a leaders' pilot. The **heating** side is
+built in the app but its Shellys/sensors aren't installed yet (see HEATING.md).
+The signing contract here ([`lib/sign.ts`](lib/sign.ts),
+[`devices/README.md`](devices/README.md)) is what the firmware and Shelly scripts
+implement against.

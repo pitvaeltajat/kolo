@@ -9,9 +9,13 @@ granted and revoked by editing group membership — nothing on the lock itself.
 
 Firmware: fork of `apple-homekey-yale`, see [FIRMWARE.md](FIRMWARE.md).
 
-Status (Oct 2026): planning. Decided: local Bluetooth, ESP32-only as the main
-path, Raspberry Pi 5 + Home Assistant as fallback, cloud (Lightsail) as last
-resort.
+Status (Nov 2026): phases 1–3 done and verified end-to-end. The ESP32-C3
+supermini drives the Yale Doorman L3 directly over BLE (offline key), and the
+full cloud link works — a Google-group member unlocks from the web app via
+signed MQTT, with the lock's ack and door/battery state reported back. ESP32-only
+is confirmed (the BLE go/no-go passed), so the Raspberry Pi 5 + Home Assistant
+and Lightsail fallbacks below were not needed. Remaining: the NTAG 424 tag reader
+(hardware) and tag rollout — phase 4.
 
 Current usage for reference (30 days of `yale_activity_full.csv`, Mar–Apr
 2026): 37 PIN unlocks, 66 manual (inside) unlocks, mostly weekday evenings.
@@ -264,17 +268,26 @@ microSD ≈ 110 €.
 
 ## Phases
 
-1. **Offline key.** Create dedicated Yale owner account, invite to the lock,
-   write `yalexs` script to fetch key/slot/MAC.
-2. **ESP32 BLE spike.** Flash `apple-homekey-yale` (or the ESPHome component),
-   with the ESP32 at its indoor mounting spot (not outside), 100 lock/unlock
-   cycles with the bridge plugged in, measure latency and failures, check lock
-   battery after a week. Go/no-go is now "does the port work with our L3" —
-   interior BLE removes the through-the-door question.
-3. **Vercel + MQTT.** Google sign-in, group check, signed commands, ack, Sheet
-   log. Pilot with leaders for ~2 weeks.
-4. **Reader.** ESP32 + PN532 outside, NTAG 424 verify + enrol, allowlist push.
-   Cold-night test. Roll out tags, cut PINs to 2–3 fallback codes.
+1. ✅ **Offline key.** Dedicated Yale owner account invited to the lock;
+   [`devices/yale/fetch_offline_key.py`](../devices/yale/fetch_offline_key.py)
+   fetches key/slot/MAC (confirmed still un-rotated on a Nov 2026 re-fetch).
+2. ✅ **ESP32 BLE spike.** Done with a from-scratch ESP-IDF/NimBLE firmware on
+   the ESP32-C3 supermini ([`devices/esp32-c3/`](../devices/esp32-c3/README.md)),
+   not the `apple-homekey-yale` fork — the C3 is the board on hand. Scan →
+   connect → GATT → secure handshake → command channel all work against the real
+   L3; `status` returns live lock/door/battery; `unlock`/`lock` actuate the bolt.
+   Go/no-go **passed** — interior BLE drives the L3. Still to do: 100-cycle soak,
+   latency/battery over a week.
+3. ✅ **Vercel + MQTT.** Google sign-in, group check, signed commands, ack, log
+   — all live. The C3's `net/` module closes the loop: a signed `kolo/door/cmd`
+   from the web app drives the lock and returns a signed ack + `/api/state` POST,
+   verified end-to-end. Broker is Mosquitto on Lightsail (`mqtt.pitva.fi:8883`,
+   TLS + private CA). Still to do: the ~2-week leaders' pilot.
+4. **Reader** (remaining). ESP32 + PN532 outside, NTAG 424 verify + enrol,
+   allowlist push. Cold-night test. Roll out tags, cut PINs to 2–3 fallback codes.
+   The SUN verify + tag-decision crypto is already written and host-tested
+   (`devices/esp32/ntag424_sun.h`, `kolo_door_tags.h`); only the PN532 ISO-DEP
+   read and enrol remain, and those are hardware-gated.
 
 ## Open questions
 
