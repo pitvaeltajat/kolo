@@ -38,7 +38,9 @@
   --color-muted: var(--muted);
   --color-accent: var(--accent);
   --color-accent-fg: var(--accent-fg);
+  --color-brand: var(--brand);
   --color-danger: var(--danger);
+  --color-success: var(--success);
 }
 
 html,
