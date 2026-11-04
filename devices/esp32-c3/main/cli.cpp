@@ -120,14 +120,42 @@ int cmd_forget(int argc, char** argv) {
 
 int cmd_setwifi(int argc, char** argv) {
   if (argc < 3) {
-    std::printf("usage: setwifi <ssid> <password>\n");
+    std::printf("usage: setwifi <ssid|hex:AABB..> <password>\n");
     return 1;
   }
   auto net = nvs_config::loadNet();
-  net.wifiSsid = argv[1];
+  // The USB-Serial-JTAG console strips non-ASCII input, so a UTF-8 SSID (e.g.
+  // one with 'ä') can't be typed directly. Accept a "hex:" prefix carrying the
+  // raw SSID bytes instead.
+  std::string ssid = argv[1];
+  if (ssid.rfind("hex:", 0) == 0) {
+    const std::string h = ssid.substr(4);
+    if (h.size() % 2 != 0) {
+      std::printf("bad hex ssid (odd length)\n");
+      return 1;
+    }
+    std::string bytes;
+    auto nib = [](char c) -> int {
+      if (c >= '0' && c <= '9') return c - '0';
+      if (c >= 'a' && c <= 'f') return c - 'a' + 10;
+      if (c >= 'A' && c <= 'F') return c - 'A' + 10;
+      return -1;
+    };
+    for (size_t i = 0; i < h.size(); i += 2) {
+      int hi = nib(h[i]), lo = nib(h[i + 1]);
+      if (hi < 0 || lo < 0) {
+        std::printf("bad hex ssid\n");
+        return 1;
+      }
+      bytes.push_back(static_cast<char>((hi << 4) | lo));
+    }
+    ssid = bytes;
+  }
+  net.wifiSsid = ssid;
   net.wifiPass = argv[2];
   nvs_config::saveNet(net);
-  std::printf("wifi saved (reboot to apply)\n");
+  std::printf("wifi saved (%u-byte ssid; reboot to apply)\n",
+              (unsigned)ssid.size());
   return 0;
 }
 
