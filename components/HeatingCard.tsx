@@ -81,11 +81,7 @@ export default function HeatingCard() {
               <HeatingChart group="downstairs" readings={data?.readings ?? []} plan={data?.plan ?? []} areaSetpoint={data?.areaSetpoints?.downstairs ?? 10} boostUntil={data?.boostUntil ?? null} />
               <HeatingChart group="upstairs" readings={data?.readings ?? []} plan={data?.plan ?? []} areaSetpoint={data?.areaSetpoints?.upstairs ?? 10} boostUntil={data?.boostUntil ?? null} />
             </div>
-            <div className="flex flex-col gap-2 text-xs text-muted">
-              {(data?.calendarEvents ?? []).map((event, i) => <div key={`${event.start}-${i}`}><span className="text-text">{event.title}</span> · {new Date(event.start).toLocaleString('fi-FI', { weekday: 'short', day: 'numeric', month: 'numeric', hour: '2-digit', minute: '2-digit' })}–{new Date(event.end).toLocaleTimeString('fi-FI', { hour: '2-digit', minute: '2-digit' })}</div>)}
-              {(data?.plan ?? []).map((period) => <div key={period.start} className="text-success">Lämmitys alkaa {new Date(period.start).toLocaleString('fi-FI', { weekday: 'short', day: 'numeric', month: 'numeric', hour: '2-digit', minute: '2-digit' })} · {period.setpointC}°C</div>)}
-              {!data?.calendarEvents?.length && <span>Ei tulevia varauksia.</span>}
-            </div>
+            {data && !data.calendarEvents.length && <p className="text-xs text-muted">Ei tulevia varauksia.</p>}
           </div>
 
           <div className="mt-4 grid gap-2 sm:grid-cols-2">

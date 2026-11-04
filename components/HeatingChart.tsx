@@ -10,7 +10,7 @@ const MIN_C = 5;
 const MAX_C = 25;
 
 function timeLabel(ms: number) {
-  return new Date(ms).toLocaleString('fi-FI', { weekday: 'short', hour: '2-digit', minute: '2-digit' });
+  return new Date(ms).toLocaleString('fi-FI', { weekday: 'short', day: 'numeric', month: 'numeric', hour: '2-digit', minute: '2-digit' });
 }
 
 export default function HeatingChart({ group, readings, plan, areaSetpoint, boostUntil }: {
@@ -44,6 +44,23 @@ export default function HeatingChart({ group, readings, plan, areaSetpoint, boos
       <svg viewBox={`0 0 ${W} ${H}`} className="h-auto w-full" role="img" aria-label={`${group} lämpötilakaavio`}>
         {ticks.map((tick) => <g key={tick}><line x1={PAD.left} x2={W - PAD.right} y1={y(tick)} y2={y(tick)} stroke="var(--border)" strokeDasharray="3 4" /><text x={PAD.left - 8} y={y(tick) + 4} textAnchor="end" fontSize="11" fill="var(--muted)">{tick}°</text><text x={W - PAD.right + 8} y={y(tick) + 4} fontSize="11" fill="var(--muted)">{tick}°</text></g>)}
         <polyline points={target} fill="none" stroke="var(--accent)" strokeWidth="3" />
+        {plan
+          .filter((p) => Date.parse(p.end) > start && Date.parse(p.start) < end)
+          .map((p) => {
+            const ps = Date.parse(p.start);
+            const cx = (x(Math.max(ps, start)) + x(Math.min(Date.parse(p.end), end))) / 2;
+            const topY = y(p.setpointC);
+            return (
+              <g key={p.start}>
+                <text x={cx} y={topY - 16} textAnchor="middle" fontSize="10" fill="var(--muted)">
+                  {new Date(ps).toLocaleDateString('fi-FI', { weekday: 'short', day: 'numeric', month: 'numeric' })}
+                </text>
+                <text x={cx} y={topY - 5} textAnchor="middle" fontSize="10" fill="var(--text)">
+                  {new Date(ps).toLocaleTimeString('fi-FI', { hour: '2-digit', minute: '2-digit' })} · {p.setpointC}°
+                </text>
+              </g>
+            );
+          })}
         {actual && <polyline points={actual} fill="none" stroke="var(--success)" strokeWidth="2.5" strokeLinejoin="round" strokeLinecap="round" />}
         <text x={PAD.left} y={H - 8} fontSize="11" fill="var(--muted)">{timeLabel(start)}</text>
         <text x={W - PAD.right} y={H - 8} textAnchor="end" fontSize="11" fill="var(--muted)">{timeLabel(end)}</text>
