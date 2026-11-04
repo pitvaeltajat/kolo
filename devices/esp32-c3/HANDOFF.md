@@ -48,22 +48,35 @@ bundle (public CA for `kolo.pitva.fi`). The broker CA is embedded from
 - Device provisioned: `ssid`=this Mac's WiFi, `mqtt host`=mqtt.pitva.fi, mqtt
   pass + hmac set (all in NVS, `net` confirms).
 
-**OPEN BUG — WiFi STA never associates.** Boot log shows WiFi inits, coexistence
-firmware loads, `net: wifi starting, ssid=...`, then **nothing for 15 s** — no
-scan, no `STA_CONNECTED`/`STA_DISCONNECTED`, no reason. So the initial
-`esp_wifi_connect()` from the `STA_START` handler isn't progressing. Added
-logging (STA_START connect rc, DISCONNECTED reason) — **next session: flash,
-`net/capture_boot.py`-style boot capture, read the rc/reason.** Likely suspects
-in order: (1) STA_START fires before our handler is wired / connect rc is an
-error → the log now shows it; (2) WiFi+BLE coexistence not actually arbitrating
-(NimBLE inited first) — try `esp_coex_preference_set(ESP_COEX_PREFER_BALANCE)`
-or init WiFi before BLE; (3) wrong SSID/password (SSID auto-grabbed from the Mac
-via `ipconfig getsummary en0`; password user-provided). The rest of the chain
-(MQTT/TLS/sign/ack/state) is untested because it's gated on WiFi being up.
+**RESOLVED + full path verified end-to-end (2026-11-04).** The WiFi "never
+associates" symptom was a wrong SSID: the USB-Serial-JTAG console strips
+non-ASCII input, so the UTF-8 SSID `Pitkäjärven Vaeltajat` lost its `ä`s and
+`setwifi` stored a bad name → `STA_DISCONNECTED reason=201` (NO_AP_FOUND). Fixed
+with a `setwifi hex:<utf8-bytes> <pass>` option (commit `5da249d`). After that:
+WiFi gets IP, MQTT connects over TLS (private CA) to `mqtt.pitva.fi:8883`, and a
+signed `kolo/door/cmd` unlock was driven from the broker →
+`net: cmd unlock` → secure session → `[OK] unlock` → `net: ack ok` →
+`net: state posted (200)`. So cmd→verify→actuate→ack AND `/api/state` all work.
 
-Capture a fresh boot on macOS with:
-`<venv>/python scratchpad/capture_boot.py /dev/cu.usbmodem1101 16` (it pulses
-RTS to reset the C3, then reads) — or on a host with `idf.py monitor`.
+Provision a non-ASCII SSID like:
+`setwifi hex:5069746bc3a46ac3a47276656e205661656c74616a6174 <password>`
+(that hex is `Pitkäjärven Vaeltajat`; `python3 -c "print('<ssid>'.encode().hex())"`).
+
+**Known rough edge — intermittent "lock rejected" from the web app.** A BLE
+connect can take up to `YALE_DIRECT_CONNECT_MS` (10 s), but the app waits only
+`ACK_TIMEOUT_MS` (5 s, lib/config.ts). When the Yale **Connect bridge** holds
+the lock's single BLE slot, the device can't connect+unlock within 5 s and the
+app shows failure; when the slot is free it's ~1 s and works. Not a logic bug —
+retry usually succeeds. To harden: raise the app's `ACK_TIMEOUT_MS` (~12–15 s)
+and/or have `performCommand` retry the connect once (disconnect, short backoff)
+within that window instead of fast-failing on the first miss (YaleBleLock.cpp
+line ~860). A local console `unlock` works reliably (BLE + WiFi coexistence are
+fine).
+
+Local MQTT test harness: `scratchpad/kolo_cmd.py <unlock|lock|status>` signs and
+publishes to the broker and prints the ack (needs the hmac key + mqtt password
+files, which live only in this session's scratchpad — regenerate from 1Password
+or re-rotate if gone).
 
 ## Hardware / environment
 
