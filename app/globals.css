@@ -4,7 +4,7 @@
 @custom-variant dark (&:where(.dark, .dark *));
 
 :root {
-  /* Shared PitVa service palette (atk, Klapi and Budu). */
+  /* Shared PitVa service palette (Kompassi, Klapi and Tukki). */
   --bg: hsl(219 89% 96%);
   --surface: hsl(0 0% 100%);
   --border: hsl(20 7% 82%);

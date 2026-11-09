@@ -5,7 +5,7 @@ import { useTheme } from 'next-themes';
 import Link from 'next/link';
 import { Moon, Sun, LogOut, LayoutGrid, KeyRound } from 'lucide-react';
 
-/** Slim header: title, link back to the atk.pitva.fi hub, theme toggle, sign out. */
+/** Slim header: title, link back to the Kompassi hub, theme toggle, sign out. */
 export default function TopBar() {
   const { data: session } = useSession();
   const { resolvedTheme, setTheme } = useTheme();
@@ -18,12 +18,12 @@ export default function TopBar() {
         </Link>
         <div className="flex-1" />
         <a
-          href="https://atk.pitva.fi"
+          href="https://kompassi.pitva.fi"
           className="topbar-link"
           title="PitVan palvelut"
         >
           <LayoutGrid size={15} />
-          ATK
+          Kompassi
         </a>
         {session?.user && (
           <Link href="/admin" className="topbar-link" title="Avainten hallinta">

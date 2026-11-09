@@ -8,7 +8,8 @@ and **electric heating**. It is the "policy, logs and UI" layer the two plans in
 built and verified end-to-end against the real lock; the NTAG 424 tag reader
 and the heating Shellys are still to come.
 
-Sign-in is the shared `atk.pitva.fi` Google login (same cookie as klapi/budu).
+Sign-in is the shared `kompassi.pitva.fi` Google login (same cookie as Klapi and
+Tukki).
 **Authorisation is Google Group membership** — a member of `ACCESS_GROUP` can
 open the door and set the heating; nobody else can. There is no user database.
 
