@@ -47,6 +47,8 @@ html,
 body {
   background: var(--bg);
   color: var(--text);
+  max-width: 100%;
+  overflow-x: hidden;
 }
 
 body {
@@ -77,6 +79,7 @@ input {
   height: 64px;
   margin: 0 auto;
   padding: 0 16px;
+  min-width: 0;
 }
 
 .topbar-link {
