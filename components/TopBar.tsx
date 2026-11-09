@@ -3,7 +3,7 @@
 import { signOut, useSession } from 'next-auth/react';
 import { useTheme } from 'next-themes';
 import Link from 'next/link';
-import { Moon, Sun, LogOut, LayoutGrid, KeyRound } from 'lucide-react';
+import { Moon, Sun, LogOut, KeyRound } from 'lucide-react';
 
 /** Slim header: title, link back to the Kompassi hub, theme toggle, sign out. */
 export default function TopBar() {
@@ -19,11 +19,11 @@ export default function TopBar() {
         <div className="flex-1" />
         <a
           href="https://kompassi.pitva.fi"
-          className="topbar-link"
-          title="PitVan palvelut"
+          className="topbar-icon"
+          title="Kompassi – PitVan palvelut"
+          aria-label="Kompassi – PitVan palvelut"
         >
-          <LayoutGrid size={15} />
-          Kompassi
+          <img src="https://kompassi.pitva.fi/favicon-32x32.png" alt="" width="16" height="16" />
         </a>
         {session?.user && (
           <Link href="/admin" className="topbar-link" title="Avainten hallinta">
