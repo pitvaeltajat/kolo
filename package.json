@@ -1,6 +1,9 @@
 {
   "private": true,
   "name": "kolo",
+  "engines": {
+    "node": "26.x"
+  },
   "scripts": {
     "dev": "next dev",
     "build": "if [ \"$VERCEL_ENV\" = production ]; then prisma migrate deploy; fi && prisma generate && next build",
