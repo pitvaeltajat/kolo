@@ -1,7 +1,14 @@
-import { dirname } from 'path';
-import { fileURLToPath } from 'url';
-import { FlatCompat } from '@eslint/eslintrc';
+import nextConfig from 'eslint-config-next';
 
-const compat = new FlatCompat({ baseDirectory: dirname(fileURLToPath(import.meta.url)) });
+const config = [
+  ...nextConfig,
+  {
+    rules: {
+      // These React Compiler diagnostics are not part of Kolo's legacy lint baseline.
+      'react-hooks/set-state-in-effect': 'off',
+      'react-hooks/purity': 'off',
+    },
+  },
+];
 
-export default [...compat.extends('next/core-web-vitals', 'next/typescript')];
+export default config;
